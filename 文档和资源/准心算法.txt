@@ -1,0 +1,127 @@
+window_x
+y_portion 
+
+
+
+
+
+
+
+
+
+
+
+
+
+class PID:
+    def __init__(self, dt, max, min, Kp, Ki, Kd):
+        self.dt = dt  # 循环时长
+        self.max = max  # 操作变量最大值
+        self.min = min  # 操作变量最小值
+        self.Kp = Kp  # 比例增益
+        self.Ki = Ki  # 积分增益
+        self.Kd = Kd  # 微分增益
+        self.integral = 0  # 直到上一次的误差值
+        self.pre_error = 0  # 上一次的误差值
+
+    def calculate(self, setPoint, pv):
+        # 其中 pv:process value 即过程值，
+        error = setPoint - pv  # 误差
+        Pout = self.Kp * error  # 比例项
+        self.integral += error * self.dt
+        Iout = self.Ki * self.integral  # 积分项
+        derivative = (error - self.pre_error) / self.dt
+        Dout = self.Kd * derivative  # 微分项
+
+        output = Pout + Iout + Dout  # 新的目标值
+
+        if (output > self.max):
+            output = self.max
+        elif (output < self.min):
+            output = self.min
+
+        self.pre_error = error  # 保存本次误差，以供下次计算
+        return output
+
+
+
+
+ offset_x = target_x - cfg.SCREEN_CENTER[0]
+    offset_y = target_y - cfg.SCREEN_CENTER[1]
+
+    print("Target ({},{}) | Screen center {}".format(target_x, target_y, cfg.SCREEN_CENTER))
+    print("Offset ({},{})".format(offset_x, offset_y))
+
+    # Move the mouse using the relative offset
+    if cfg.AIMING:
+        mouse.mouse_move(offset_x, offset_y, True) 
+
+
+
+# 平滑坐标的函数，使用简单移动平均
+class CoordinateSmoother:
+    def __init__(self, window_size=5):
+        self.window_size = window_size
+        self.x_buffer = []
+        self.y_buffer = []
+
+    def smooth_coordinate(self, x, y):
+        self.x_buffer.append(x)
+        self.y_buffer.append(y)
+
+        if len(self.x_buffer) > self.window_size:
+            self.x_buffer.pop(0)
+            self.y_buffer.pop(0)
+
+        smoothed_x = int(np.mean(self.x_buffer))
+        smoothed_y = int(np.mean(self.y_buffer))
+
+        return smoothed_x, smoothed_y
+
+
+
+
+# PID 控制器类
+class PID:
+    def __init__(self, P=0.2, I=0.01, D=0.1):
+        self.kp, self.ki, self.kd = P, I, D
+        self.uPrevious, self.uCurent = 0, 0
+        self.setValue, self.lastErr, self.errSum = 0, 0, 0
+        self.errSumLimit = 10
+
+    def pidPosition(self, setValue, curValue):
+        err = setValue - curValue
+        dErr = err - self.lastErr
+        self.errSum += err
+        outPID = self.kp * err + self.ki * self.errSum + self.kd * dErr
+        self.lastErr = err
+        return outPID
+
+
+
+
+aim_mouse = (win32api.GetAsyncKeyState(win32con.VK_RBUTTON) and win32api.GetAsyncKeyState(win32con.VK_LBUTTON))
+if aim_mouse==0:
+    pid_x.calculate(0,0)
+    pid_y.calculate(0,0)
+
+
+
+    predict_target_position(target_x, target_y, current_time)
+
+    calc_movement(target_x, target_y, target_cls)
+            --calculate_speed_multiplier
+
+    move_mouse(move_x, move_y)
+
+
+
+
+单目标
+        小范围内如果多个目标 不要按距离 以原先的方向为主
+        大范围按距离
+多目标
+
+
+自动扳机
+蜘蛛侠模式

@@ -1,0 +1,16 @@
+conda create -n 0326py39 
+conda activate 0326py39 
+cd F:\0325yolov11n\TensorRT-For-YOLO-Series-cuda-python\TensorRT-For-YOLO-Series-cuda-python
+
+python export.py  -o best.onnx -e best.trt --end2end --v8 -p fp16
+
+
+python trt.py -e best.trt  -i test.jpg -o test1.jpg --end2end 
+
+cuda 11.8
+cunn 
+tensor 8.5
+
+
+pip install tensorrt
+pip install cuda-python
