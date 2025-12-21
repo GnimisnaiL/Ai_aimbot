@@ -1,0 +1,6 @@
+# Visual Studio files
+.vs/
+build/
+cpp/
+model/
+_pycache_
