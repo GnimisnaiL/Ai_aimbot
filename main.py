@@ -122,23 +122,28 @@ def find_target():
     screen_x,screen_y=cfg.screen_x,cfg.screen_y #显示器分辨率
     window_x,window_y=cfg.window_x,cfg.window_y #截图窗口尺寸
     model_x,model_y=cfg.model_x,cfg.model_y #模型输入尺寸
-    #数据统计
-    last_time = 0
-    frame_count = 0
+    aim_fix,aim_fix_time=1,0 #移动补偿
+    #上一帧切片
+    prev_check=None 
+    #可视化
+    show_view=0
+    display_thread = None
+    #时间数据寄存
+    last_combot_time=0 #夜魔侠连招
+    last_key_time=0 #按键检测分频
+    last_afk_time=0 #挂机时间
+    last_capture_time=0 #fps控制
+    last_frame_time=0 #fps统计
+    #fps数据统计
+    frame_count=0
     loop_count=0
     #专用FPS控制
     fps_control=cfg.fps_control
-    last_capture_time = 0
-    frame_interval = 1.0 / cfg.capture_fps  # 每帧时间
+    frame_interval=1.0/cfg.capture_fps  # 每帧时间
     # 启动鼠标滚轮监听线程
     #mouse_listener = mouse.Listener(on_scroll=on_scroll)
     #mouse_listener.start()
     #scroll_history=0
-    prev_img=0 #上一帧图像
-    aim_fix,count_a,count_d=1,0,0 #移动补偿
-    #可视化
-    show_view=0
-    display_thread = None
     #初始参数
     aim_mode=2 #模式
     fire_mode=2 #按键
@@ -146,7 +151,7 @@ def find_target():
     auto_trigger=0 #扳机
     x_portion,y_portion=cfg.x_portion,cfg.y_portion #位置
     speed_x,speed_y=cfg.speed_x,cfg.speed_y #速度
-    aim_range=4 #瞄准范围
+    aim_range=4.5 #瞄准范围
     smooth_enable=1 #平滑
     #特殊按键锁存
     x2_key=0
@@ -157,7 +162,6 @@ def find_target():
     mb_key=0
     ctrl_key=0
     spiderman_key=0
-    last_combot_time=0 #夜魔侠连招
     #英伟达截图
     get_train_pic=0
     last_get_picture_time=0
@@ -190,7 +194,38 @@ def find_target():
             mouse_move(0, x, y, 0)
 
     # 批量获取按键状态
-    def get_key_states():
+    def get_key_less():
+        keys = {
+            'f1': 0,
+            'f2': 0,
+            'f3': 0,
+            'f5': 0,
+            'f6': 0,
+            'f7':  0,
+            'f10': 0,
+            'f11': 0,
+            'f12': 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'prior': 0,
+            'next': 0,
+            'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
+            'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
+            'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
+            'mb': win32api.GetAsyncKeyState(win32con.VK_MBUTTON) & 0x8000 != 0,
+            'x1': win32api.GetAsyncKeyState(win32con.VK_XBUTTON1) & 0x8000 != 0,
+            'x2': win32api.GetAsyncKeyState(win32con.VK_XBUTTON2) & 0x8000 != 0,
+            'shift': win32api.GetAsyncKeyState(win32con.VK_SHIFT) & 0x8000 != 0,
+            'ctrl' : win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000 != 0,
+            'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
+            'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
+            'f': win32api.GetAsyncKeyState(0x46) & 0x8000 != 0,
+            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0
+        }
+        return keys
+    def get_key_more():
         keys = {
             'f1': win32api.GetAsyncKeyState(win32con.VK_F1) & 0x8000 != 0,
             'f2': win32api.GetAsyncKeyState(win32con.VK_F2) & 0x8000 != 0,
@@ -198,7 +233,37 @@ def find_target():
             'f5': win32api.GetAsyncKeyState(win32con.VK_F5) & 0x8000 != 0,
             'f6': win32api.GetAsyncKeyState(win32con.VK_F6) & 0x8000 != 0,
             'f7': win32api.GetAsyncKeyState(win32con.VK_F7) & 0x8000 != 0,
-            '4': win32api.GetAsyncKeyState(0x34) & 0x8000 != 0,
+            'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
+            'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
+            'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'prior': 0,
+            'next': 0,
+            'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
+            'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
+            'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
+            'mb': win32api.GetAsyncKeyState(win32con.VK_MBUTTON) & 0x8000 != 0,
+            'x1': win32api.GetAsyncKeyState(win32con.VK_XBUTTON1) & 0x8000 != 0,
+            'x2': win32api.GetAsyncKeyState(win32con.VK_XBUTTON2) & 0x8000 != 0,
+            'shift': win32api.GetAsyncKeyState(win32con.VK_SHIFT) & 0x8000 != 0,
+            'ctrl' : win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000 != 0,
+            'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
+            'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
+            'f': win32api.GetAsyncKeyState(0x46) & 0x8000 != 0,
+            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0
+        }
+        return keys
+    def get_key_all():
+        keys = {
+            'f1': win32api.GetAsyncKeyState(win32con.VK_F1) & 0x8000 != 0,
+            'f2': win32api.GetAsyncKeyState(win32con.VK_F2) & 0x8000 != 0,
+            'f3': win32api.GetAsyncKeyState(win32con.VK_F3) & 0x8000 != 0,
+            'f5': win32api.GetAsyncKeyState(win32con.VK_F5) & 0x8000 != 0,
+            'f6': win32api.GetAsyncKeyState(win32con.VK_F6) & 0x8000 != 0,
+            'f7': win32api.GetAsyncKeyState(win32con.VK_F7) & 0x8000 != 0,
             'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
             'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
             'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
@@ -219,13 +284,11 @@ def find_target():
             'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
             'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
             'f': win32api.GetAsyncKeyState(0x46) & 0x8000 != 0,
-            'q': win32api.GetAsyncKeyState(0x57) & 0x8000 != 0,
-            'space': win32api.GetAsyncKeyState(win32con.VK_SPACE) & 0x8000 != 0,
             'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0
         }
         return keys
 
-    # 鼠标滚轮监听回调函数
+    # 鼠标滚轮监听回调函数 弃用
     def on_scroll(x, y, dx, dy):
         global mouse_wheel_up, mouse_wheel_down
         if dy > 0:  # 滚轮向上滚动
@@ -239,7 +302,7 @@ def find_target():
     def psylocke_dash():
         global aim_range
         time.sleep(0.5)
-        aim_range=4
+        aim_range=4.5
 
     # 自动扳机触发函数 按键J
     def trigger_key():
@@ -297,7 +360,15 @@ def find_target():
     while True:
         now=time.time()
         loop_count+=1
-        key = get_key_states()  #在主循环中调用一次获取按键状态
+        
+        if now-last_key_time>0.1:
+            key = get_key_more()  #按键检测分频
+            last_key_time=now
+        elif debug==1:
+            key=get_key_all()
+        else:
+            key=get_key_less()
+
         #模式配置
         if 1:
             if key['f1']:
@@ -481,9 +552,9 @@ def find_target():
             if ins_key==1 and key['insert']==0:
                 ins_key=0
             if afk==1:
-                if now - last_capture_time < 2:
-                    continue  # 还没到下一帧的时间
-                last_capture_time=now
+                if now - last_afk_time < 2:
+                    continue  
+                last_afk_time=now
                 executor.submit(afk_macro)
                 continue
 
@@ -588,29 +659,36 @@ def find_target():
                 continue  
             last_capture_time = now
         img0=capture.get_new_frame()
-        if img0 is None: #如果图像没有，跳过
+        if img0 is None:
             print("错误：输入图像为空！")
             continue
-        if np.array_equal(img0, prev_img): #如果图像没有变化，跳过
+
+        curr_check=img0.ravel()[:300] #极简对比逻辑：拉平数组取前300个值
+        if prev_check is not None and np.array_equal(curr_check, prev_check): #如果图像没有变化，跳过
             continue  
-        prev_img = img0.copy() 
+        prev_check = curr_check.copy()
+        
         #截图遮蔽
         cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
         #if aim_mode==10 :
         #    cv2.rectangle(img0, (25, 200), (100, 426), (255, 0, 0),  -1 )
-        if show_view==1: #可视化
+
+        #可视化
+        if show_view==1: 
             resized_display = cv2.resize(img0, (int(model_x), int(model_y)))
-        #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
-        img, ratio, dwdh = letterbox(img0, new_shape=(model_x, model_y))
-        
+
         ############################执行推理############################
-        if aim_mode==7:
+        img, ratio, dwdh = letterbox(img0, new_shape=(model_x, model_y)) #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
+        if aim_mode==7: #奶妈使用另外的模型
             data = ally_pred.infer(img)
         else:
             data = enemy_pred.infer(img)
-
         frame_count += 1 #每秒推理次数统计
-        num, final_boxes, final_scores, final_cls_inds  = data #目标数量 检测框的坐标 置信度分数 类别索引
+        num, final_boxes, final_scores, final_cls_inds  = data #数量 坐标 置信度 索引
+        ################################################################
+
+        
+        #处理目标数据
         if num > 0:
             #图像缩放坐标还原
             dwdh = np.asarray(dwdh*2, dtype=np.float32)
@@ -623,18 +701,19 @@ def find_target():
             #先提取数字，再使用
             num_boxes = int(num[0].item())  # 或者 int(num.item())
             dets = np.concatenate([np.array(final_boxes)[:num_boxes], np.array(final_scores)[:num_boxes], np.array(final_cls_inds)[:num_boxes]], axis=-1)
+            #边界框坐标、置信度分数和类别索引
+            final_boxes, final_scores, final_cls_inds = dets[:, :4], dets[:, 4], dets[:, 5]
+
             #目标处理
             target_xywh_list = []
             target_distance_list = []
-            #边界框坐标、置信度分数和类别索引
-            final_boxes, final_scores, final_cls_inds = dets[:, :4], dets[:, 4], dets[:, 5]
             #遍历所有检测目标
             for i in range(len(final_boxes)):
                 box = final_boxes[i]
                 score = final_scores[i]
 
                 #可信度过滤
-                if (aim_mode==1.5 or aim_mode==5 or aim_mode==10 or aim_mode==10.5) and score < 0.6: 
+                if (aim_mode==1.5 or aim_mode==5 or aim_mode==10) and score < 0.6: 
                     continue
                     
                 #将边界框的坐标格式从 (x1, y1, x2, y2)（左上角+右下角）转换为 (cx, cy, w, h)（中心点+宽高)
@@ -648,8 +727,8 @@ def find_target():
                     cv2.rectangle(resized_display, (int(x1), int(y1)), (int(x2),int(y2)), (0, 255, 0), 1)
                     # 绘制文本
                     #text = f'{(xywh[0]- model_x/2)/(xywh[2]/2):.1f},{(xywh[1]- model_y/2- y_portion * target_xywh[3])/(xywh[2]/2):.1f}' #目标与中心距离比例
-                    #text = f'{xywh[2]:.0f},{xywh[3]:.0f}' #目标宽度
-                    text = f'{score:.2f}' #置信度
+                    text = f'{xywh[2]:.0f},{score:.2f}' #目标
+                    #text = f'{score:.2f}' #置信度
                     (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
                     #文本背景
                     cv2.rectangle(resized_display, (int(x1), int(y1) - text_height - 5),(int(x1) + text_width, int(y1) - 5),(0, 255, 0), -1)
@@ -660,143 +739,133 @@ def find_target():
                         cv2.circle(resized_display, (int(xywh[0]-x_portion*xywh[2]), int(xywh[1]+y_portion)), 2, (0, 0, 255), -1)
                     else:
                         cv2.circle(resized_display, (int(xywh[0]+x_portion*xywh[2]), int(xywh[1]-y_portion * xywh[3])), 2, (0, 0, 255), -1)
-                #计算目标到屏幕中心距离\面积  上下的优先级大于左右
+
+                #目标优先级处理
                 if aim_mode==7:#奶妈特调
                     target_distance=(xywh[0] - model_x/2)**2 + (xywh[1]+ y_portion - model_y/2)**2
                 else:
                     target_distance=(xywh[0] - model_x/2)**2 + (xywh[1]- (y_portion * xywh[3])- model_y/2)**2
                 target_distance_list.append(target_distance)
-
-            if target_xywh_list:  #选取最近目标
-                min_index = target_distance_list.index(min(target_distance_list))
-                target_xywh = target_xywh_list[min_index]
-
-                #自动扳机
-                if auto_trigger==1:
-                    a=(target_xywh[0]-1*target_xywh[2]/2)
-                    b=(target_xywh[0]+1*target_xywh[2]/2)
-                    c=(target_xywh[1]-0.95*target_xywh[3]/2)
-                    d=(target_xywh[1]+0.8*target_xywh[3]/2)
-                    if a<model_x/2<b and c<model_y/2<d:
-                        if key['rb']==0 and key['mb']==0 and key['shift']==0:
-                            executor.submit(trigger_key)
-                            #threading.Thread(target=trigger_key).start()
-
             
-                #X向量动态调整
-                final_x = target_xywh[0] - model_x/2  + x_portion * target_xywh[2]
-                if aim_fix==1 and key['a'] and key['d']==0 and aim_mode!=7: #移动补偿 按A要往右调 黑寡妇开镜调
-                    count_a=count_a+1
-                    count_d=0
-                    if count_a>20:
-                        final_x=target_xywh[0] - model_x/2  + (x_portion+0.1) * target_xywh[2]               
-                if aim_fix==1 and key['d'] and key['a']==0 and aim_mode!=7: #移动补偿 按D要往左调  
-                    count_d=count_d+1
-                    count_a=0
-                    if count_d>20:
-                        final_x=target_xywh[0] - model_x/2  + (x_portion-0.2) * target_xywh[2]                                     
-                if aim_fix==1 and (key['a']==0 and key['d']==0) or(key['a'] and key['d']) and aim_mode!=7: #同时按或者不按则还原
-                    count_a=0
-                    count_d=0
-
-                #Y向量动态调整             
-                if aim_mode==2 and key['shift']: #长枪锁头
-                    shift_y_portion=0.37
-                elif aim_mode==2.5 and (key['rb'] or key['mb'] or key['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 弃用
-                    shift_y_portion=0.2
-                elif aim_mode==3 and key['shift']: #飞天锁头
-                    shift_y_portion=0.4
-                elif aim_mode==3 and key['mb']: #飞天锁地
-                    shift_y_portion=-0.6
-                elif aim_mode==5 and key['lb']: #黑寡妇左键
-                    shift_y_portion=0.4
-                else:
-                    shift_y_portion=y_portion
-                final_y = target_xywh[1]-model_y/2-shift_y_portion*target_xywh[3]
-
-                #奶妈特殊参数
-                if aim_mode==7:
-                    if 190<=target_xywh[2]:
-                        continue
-                    elif 160<=target_xywh[2]<190:
-                        shift_y_portion=0.55*target_xywh[2]
-                    elif target_xywh[2]<160:
-                        shift_y_portion=y_portion
-                    final_y = target_xywh[1]-model_y/2+shift_y_portion
-                
-
-                #计算系数
-                factorX=abs(final_x/(target_xywh[2]/2))
-                factorY=abs(final_y/(target_xywh[2]/2))
-
-                #发送鼠标输入
-                if aim_mouse:
-                    if smooth_enable==1: #平滑
-                        move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
-                        if factorX>2.7: # 平滑左右分界点2.7
-                            move_x=smoothX.update(final_x * speed_x)
-                        #else:
-                            #smoothX.update(final_x * speed_x)
-                        if factorY>3: # 平滑上下分界点3
-                            move_y=smoothY.update(final_y * speed_y)     
-                        #else:                            
-                            #smoothY.update(final_y * speed_y)
-                        smoothX.update2(final_x * speed_x)
-                        smoothY.update2(final_y * speed_y)    
-                    else:
-                        move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
-
-                    
-                    if aim_mode==3: #飞天
-                        if factorX<aim_range and factorY<4:
-                            mouse_driver_move(move_x,move_y)
-
-                    elif aim_mode==5: #黑寡妇
-                        if key['lb']:
-                            if factorX<10 and factorY<10:
-                                mouse_driver_move(move_x,move_y)
-                        else:    
-                            if  factorX<aim_range and -5<(final_y/(target_xywh[2]/2))<3: #原来是4 和 4
-                                mouse_driver_move(move_x,move_y)
-
-                    elif aim_mode==7: #奶妈
-                         if factorX<0.7 and factorY<aim_range:
-                            mouse_driver_move(move_x,move_y)
-
-                    elif aim_mode==10: #蜘蛛侠
-                        if -aim_range-2<(final_x/(target_xywh[2]/2))<aim_range and factorY<4:
-                            mouse_driver_move(move_x,move_y)
-
-                    else:
-                        if factorX<aim_range and -6<(final_y/(target_xywh[2]/2))<4:
-                            mouse_driver_move(move_x,move_y)
-                            #executor.submit(mouse_driver_move,move_x,move_y)
-
-                else:
-                    if smooth_enable==1:
-                        smoothX.clean()
-                        smoothY.clean()
-
-
-
         #fps计数
-        current_time = time.time()
-        if current_time - last_time >= 1.0:
-            fps = frame_count / (current_time - last_time)
-            lps = loop_count / (current_time - last_time)
-            print(f"FPS:{fps:>3.0f} {'平滑' if smooth_enable == 1 else ''}m{aim_mode} |大招{loop_count}")
-            frame_count = 0
-            loop_count =0
-            last_time = current_time
-
+        if now-last_frame_time >= 1.0:
+            fps=frame_count/(now-last_frame_time)
+            lps=loop_count/(now-last_frame_time)
+            print(f"FPS:{fps:>3.0f} {'平滑' if smooth_enable == 1 else ''}m{aim_mode} |大招{lps:.0f}")
+            frame_count=0
+            loop_count=0
+            last_frame_time=now
 
         # 可视化
         if show_view==1:
             cv2.putText(resized_display, f'{fps:>3.0f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             # 非阻塞更新显示
             display_thread.update_image(resized_display)
+        
+        #选取最近目标
+        if num>0 and target_xywh_list:  
+            min_index = target_distance_list.index(min(target_distance_list))
+            target_xywh = target_xywh_list[min_index]
 
+            #自动扳机
+            if auto_trigger==1:
+                a=(target_xywh[0]-1*target_xywh[2]/2)
+                b=(target_xywh[0]+1*target_xywh[2]/2)
+                c=(target_xywh[1]-0.95*target_xywh[3]/2)
+                d=(target_xywh[1]+0.8*target_xywh[3]/2)
+                if a<model_x/2<b and c<model_y/2<d:
+                    if key['rb']==0 and key['mb']==0 and key['shift']==0:
+                        executor.submit(trigger_key)
+                        #threading.Thread(target=trigger_key).start()
 
+            
+            #X向量动态调整
+            final_x = target_xywh[0] - model_x/2  + x_portion * target_xywh[2]
+            if aim_fix==1 and key['a'] and key['d']==0 and aim_mode!=7: #移动补偿 按A要往右调 黑寡妇开镜调
+                if now-aim_fix_time>0.2:
+                    final_x=target_xywh[0] - model_x/2  + (x_portion+0.1) * target_xywh[2]               
+            if aim_fix==1 and key['d'] and key['a']==0 and aim_mode!=7: #移动补偿 按D要往左调  
+                if now-aim_fix_time>0.2:
+                    final_x=target_xywh[0] - model_x/2  + (x_portion-0.2) * target_xywh[2]                                     
+            if aim_fix==1 and (key['a']==0 and key['d']==0) or(key['a'] and key['d']) and aim_mode!=7: #同时按或者不按则还原
+                aim_fix_time=now
+
+            #Y向量动态调整             
+            if aim_mode==2 and key['shift']: #长枪锁头
+                shift_y_portion=0.37
+            elif aim_mode==2.5 and (key['rb'] or key['mb'] or key['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 弃用
+                shift_y_portion=0.2
+            elif aim_mode==3 and key['shift']: #飞天锁头
+                shift_y_portion=0.4
+            elif aim_mode==3 and key['mb']: #飞天锁地
+                shift_y_portion=-0.6
+            elif aim_mode==5 and key['lb']: #黑寡妇左键
+                shift_y_portion=0.4
+            else:
+                shift_y_portion=y_portion
+            final_y = target_xywh[1]-model_y/2-shift_y_portion*target_xywh[3]
+
+            #奶妈特殊参数
+            if aim_mode==7:
+                if target_xywh[2]>=0.6*model_x: #血条宽度太宽 不加入候选列表
+                    continue
+                elif model_x/2<=target_xywh[2]<0.6*model_x:
+                    shift_y_portion=y_portion-(model_x/2-target_xywh[2])*2
+                elif target_xywh[2]<model_x/2:
+                    shift_y_portion=y_portion
+                final_y = target_xywh[1]-model_y/2+shift_y_portion
+                
+            #计算系数
+            factorX=abs(final_x/(target_xywh[2]/2))
+            factorY=abs(final_y/(target_xywh[2]/2))
+
+            #发送鼠标输入
+            if aim_mouse:
+                if smooth_enable==1: #平滑
+                    move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
+                    if factorX>2.7: # 平滑左右分界点2.7
+                        move_x=smoothX.update(final_x * speed_x)
+                    #else:
+                        #smoothX.update(final_x * speed_x)
+                    if factorY>3: # 平滑上下分界点3
+                        move_y=smoothY.update(final_y * speed_y)     
+                    #else:                            
+                        #smoothY.update(final_y * speed_y)
+                    smoothX.update2(final_x * speed_x)
+                    smoothY.update2(final_y * speed_y)    
+                else:
+                    move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
+
+                    
+                if aim_mode==3: #飞天
+                    if factorX<aim_range and factorY<4:
+                        mouse_driver_move(move_x,move_y)
+
+                elif aim_mode==5: #黑寡妇
+                    if key['lb']:
+                        if factorX<10 and factorY<10:
+                            mouse_driver_move(move_x,move_y)
+                    else:    
+                        if  factorX<aim_range and -5<(final_y/(target_xywh[2]/2))<3: #原来是4 和 4
+                            mouse_driver_move(move_x,move_y)
+
+                elif aim_mode==7: #奶妈
+                    if factorX<0.7 and -1<final_y/(target_xywh[2]/2)<0.8:
+                        mouse_driver_move(move_x,move_y)
+
+                elif aim_mode==10: #蜘蛛侠
+                    if -aim_range-2<(final_x/(target_xywh[2]/2))<aim_range and factorY<4:
+                        mouse_driver_move(move_x,move_y)
+
+                else:
+                    if factorX<aim_range and -6<(final_y/(target_xywh[2]/2))<4:
+                        mouse_driver_move(move_x,move_y)
+                        #executor.submit(mouse_driver_move,move_x,move_y)
+
+            else:
+                if smooth_enable==1:
+                    smoothX.clean()
+                    smoothY.clean()
 
 
 if __name__ == '__main__':
