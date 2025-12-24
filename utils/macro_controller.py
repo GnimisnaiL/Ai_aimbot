@@ -119,7 +119,7 @@ class MacroController:
         self.rzr.keyboard_input(36, 1)
 
     # 蜘蛛侠取消后摇 按键JK
-    def spideman_macro(self):
+    def spiderman_macro(self):
         self.rzr.keyboard_input(36, 0)
         time.sleep(0.1)
         self.rzr.keyboard_input(36, 1)
