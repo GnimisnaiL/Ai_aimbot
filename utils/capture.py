@@ -12,10 +12,12 @@ class Capture(threading.Thread):
         super().__init__()
         self.daemon = True
         self.name = "图书馆管理"
-
+        self.region = self.calculate_screen_offset()
         self.running = True        
         self.frame_queue = queue.Queue(maxsize=1)
-
+        
+        self.frame_count=0
+        self.last_frame_time=0
 
         if cfg.Bettercam_capture:
             self.setup_bettercam()
@@ -24,36 +26,29 @@ class Capture(threading.Thread):
         elif cfg.mss_capture:
             self.setup_mss()
     
-
-    def calculate_screen_offset():
+    #==================================配置==================================
+    def calculate_screen_offset(self):
         a=(cfg.screen_x-cfg.window_x)/2
         b=(cfg.screen_y-cfg.window_y)/2-cfg.y_correction_factor
         c=(cfg.screen_x-cfg.window_x)/2+cfg.window_x
         d=(cfg.screen_y-cfg.window_y)/2+cfg.window_y-cfg.y_correction_factor
         return(int(a),int(b),int(c),int(d))
-
-
+    #mss特殊
     def calculate_mss_offset(self):
         a=(cfg.screen_x-cfg.window_x)/2
         b=(cfg.screen_y-cfg.window_y)/2-cfg.y_correction_factor
-        c=(cfg.screen_x-cfg.window_x)/2+cfg.window_x
-        d=(cfg.screen_y-cfg.window_y)/2+cfg.window_y-cfg.y_correction_factor
-
         return int(a), int(b), int(cfg.window_x), int(cfg.window_x)
 
     def setup_bettercam(self):
-        self.bc = bettercam.create(
+        self.bettercam = bettercam.create(
             device_idx=cfg.bettercam_monitor_id,
             output_idx=cfg.bettercam_gpu_id,
             output_color="BGR",
-            max_buffer_len=1,
-            region=self.calculate_screen_offset(),
-            nvidia_gpu= False
-
+            max_buffer_len=1
         )
-        if not self.bc.is_capturing:
-            self.bc.start(
-                region=self.calculate_screen_offset(),
+        if not self.bettercam.is_capturing:
+            self.bettercam.start(
+                region=self.region,
                 target_fps=cfg.capture_fps,
                 video_mode=True
             )
@@ -72,10 +67,14 @@ class Capture(threading.Thread):
     def setup_mss(self):
         left, top, width, height = self.calculate_mss_offset()
         self.monitor = {"left": left, "top": top, "width": width, "height": height}
-
-
-
+    #========================================================================
+    
     def run(self):
+        # --- 关键修改：在线程内部初始化 mss ---
+        if cfg.mss_capture:
+            self.sct = mss.mss()
+            #print("[Capture] MSS 线程内初始化成功")
+
         while self.running:
             frame = self.capture_frame()
             if frame is not None:
@@ -85,48 +84,60 @@ class Capture(threading.Thread):
 
             
     def capture_frame(self):
-        #start = time.time()
         if cfg.Bettercam_capture:
-            #计算每秒录制帧数
-            self.current_time = time.time()
-            self.frame_count=self.frame_count+1
-            if self.current_time - self.last_time >= 1.0:
-                fps = self.frame_count / (self.current_time - self.last_time)
-                print(f"{fps:>3.0f}")
-                self.frame_count = 0
-                self.last_time = self.current_time
-            return self.bc.get_latest_frame()
+            #计算每秒截图次数
+            if False:
+                self.frame_count+=1
+                now=time.time()
+                if now-self.last_frame_time>=1:
+                    print(self.frame_count)
+                    self.frame_count=0
+                    self.last_frame_time=now
+            #return self.bettercam.grab(region=self.region)
+            return self.bettercam.get_latest_frame()
         
         if cfg.Obs_capture:
             ret_val, img = self.obs_camera.read()
             return img if ret_val else None
 
-        if cfg.mss_capture:
-            with mss.mss() as sct:
-                screenshot = sct.grab(self.monitor)
-                raw = screenshot.bgra
-                img = np.frombuffer(raw, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
-            #    #print("capture_frame time:", (time.time() - start) * 1000, "ms")
-                return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+        if cfg.mss_capture and self.sct:
+            if False:
+                with mss.mss() as sct:
+                    #计算每秒截图次数
+                    if False:
+                        self.frame_count+=1
+                        now=time.time()
+                        if now-self.last_frame_time>=1:
+                            print(self.frame_count)
+                            self.frame_count=0
+                            self.last_frame_time=now
+                    screenshot = sct.grab(self.monitor)
+                    raw = screenshot.bgra
+                    img = np.frombuffer(raw, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
+                    return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
-
+            # 2. 直接使用初始化好的 self.sct，不再使用 with 语句
+            screenshot = self.sct.grab(self.monitor)
+        
+            # 3. 极速转换：从 BGRA 到 BGR
+            # 注意：mss 返回的 bgra 是字节流，reshape 后的切片速度远快于 cv2.cvtColor
+            img = np.frombuffer(screenshot.bgra, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
+            return img[:, :, :3].copy()  # 直接切掉第四个通道 (Alpha)，速度极快
+            
     def get_new_frame(self):
         try:
             return self.frame_queue.get(timeout=1)
         except queue.Empty:
             return None
 
-    
     def restart(self):
         if cfg.Bettercam_capture:
-            self.bc.stop()
-            del self.bc
+            self.bettercam.stop()
+            del self.bettercam
             self.setup_bettercam()
 
             print('[Capture] Capture reloaded')
           
-            
-   
     def find_obs_virtual_camera(self):
         max_tested = 20
         obs_camera_name = 'DSHOW'
@@ -142,12 +153,10 @@ class Capture(threading.Thread):
             cap.release()
         return -1
     
-
-    
     def Quit(self):
         self.running = False
-        if cfg.Bettercam_capture and hasattr(self, 'bc') and self.bc.is_capturing:
-            self.bc.stop()
+        if cfg.Bettercam_capture and hasattr(self, 'bettercam') and self.bettercam.is_capturing:
+            self.bettercam.stop()
         if cfg.Obs_capture and hasattr(self, 'obs_camera'):
             self.obs_camera.release()
         self.join()

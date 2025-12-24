@@ -111,4 +111,19 @@ class ModeManager:
                 'smooth_enable': False,
                 'auto_headshot' : False
             }
+        if key['x2'] and key['f2']:
+            config={
+                'name': "暴力锁头模式", 
+                'aim_mode': 22, 
+                'fire_mode': 2, 
+                'aimbot_enable': True,
+                'auto_trigger': False,
+                'x_portion': cfg.x_portion, 
+                'y_portion': 0.37, 
+                'speed_x': cfg.speed_x,
+                'speed_y': cfg.speed_y,
+                'aim_range': 4, 
+                'smooth_enable': True,
+                'auto_headshot' : False
+            }
         return config

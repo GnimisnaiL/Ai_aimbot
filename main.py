@@ -118,7 +118,7 @@ def find_target():
     ally_pred = Predictor(engine_path=str(ROOT / 'ally.trt'))
     print("模型加载完毕")
     debug=cfg.debug #debug模式
-    executor = ThreadPoolExecutor(max_workers=100)  #创建线程池，全局只创建一次 最多同时运行任务
+    executor = ThreadPoolExecutor(max_workers=30)  #创建线程池，全局只创建一次 最多同时运行任务
     screen_x,screen_y=cfg.screen_x,cfg.screen_y #显示器分辨率
     window_x,window_y=cfg.window_x,cfg.window_y #截图窗口尺寸
     model_x,model_y=cfg.model_x,cfg.model_y #模型输入尺寸
@@ -150,7 +150,7 @@ def find_target():
     aim_range=4.5 #瞄准范围
     smooth_enable=True #平滑
     auto_headshot=False #自适应爆头
-    root=0.3 #自适应爆头开根
+    auto_headshot_root=0.3 #自适应爆头开根
     #特殊按键锁存
     x2_key=0
     f9_key=0
@@ -207,6 +207,7 @@ def find_target():
         time.sleep(0.5)
         aim_range=4
 
+    round_time=0
     # 主循环
     while True:
         now=time.time()
@@ -310,7 +311,7 @@ def find_target():
             if aim_mode==10:
                 if spiderman_key==0 and key['mb']: #蜘蛛侠取消后摇连招
                     spiderman_key=1
-                    threading.Thread(target=macro_ctl.spideman_macro).start()
+                    threading.Thread(target=macro_ctl.spiderman_macro).start()
                     print("蜘蛛侠JK宏")
                 if spiderman_key==1 and key['mb']==0:
                     spiderman_key=0
@@ -408,15 +409,15 @@ def find_target():
                 #speed_x+=0.05
                 #speed_y+=0.05
                 #print("speed:",speed_x)
-                root+=0.05
-                print("root:",root)
+                auto_headshot_root+=0.05
+                print("root:",auto_headshot_root)
                 time.sleep(0.2)
             if key['next']:
                 #speed_x-=0.05
                 #speed_y-=0.05
                 #print("speed:",speed_x)
-                root-=0.05
-                print("root:",root)
+                auto_headshot_root-=0.05
+                print("root:",auto_headshot_root)
                 time.sleep(0.2)
 
         #触发按键
@@ -460,10 +461,12 @@ def find_target():
             continue  
         prev_check = curr_check.copy()
         
+        #round_time+=1
+        #if round_time%3==0:
+        #    continue
+
         #截图遮蔽
-        cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
-        #if aim_mode==10 :
-        #    cv2.rectangle(img0, (25, 200), (100, 426), (255, 0, 0),  -1 )
+        #cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
 
         #可视化
         if show_view: 
@@ -594,7 +597,7 @@ def find_target():
                 threshold=0.3
                 if target_xywh[3]/model_y>threshold: 
                     x=((target_xywh[3]/model_y)-threshold)/(1-threshold)
-                    y=x**root
+                    y=x**auto_headshot_root
                     shift_y_portion=y_portion+y*(0.5-y_portion)
             if aim_mode==2 and key['shift']: #长枪锁头
                 shift_y_portion=0.37
@@ -604,8 +607,8 @@ def find_target():
                 shift_y_portion=-0.6
             if aim_mode==5 and key['lb']: #黑寡妇左键
                 shift_y_portion=0.4
-            #if aim_mode==9 and (key['rb'] or key['mb'] or key['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 弃用
-            #    shift_y_portion=0.2 
+            if aim_mode==22 and (key['rb'] or key['mb'] or key['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 弃用
+                shift_y_portion=0.2 
             final_y = target_xywh[1]-model_y/2-shift_y_portion*target_xywh[3]
 
             #奶妈特殊参数
