@@ -1,489 +1,161 @@
-import os
-import sys
 import cv2
 import time
-import queue
-import win32api
-import win32con
-import threading
+import random
 import numpy as np
-from pathlib import Path
-from utils.utils import BaseEngine
+
+
+#线程池
 from concurrent.futures import ThreadPoolExecutor
 #配置文件
 from utils.config_watcher import cfg
-#旧画面捕捉
-#from utils.grabscreen import grab_screen
-#键盘码
-from utils.keybinds import *
+print('模型初始化')
+#模型初始化
+from utils.utils import Predictor
+print('模型初始化结束')
 #画面预处理
 from utils.utils import letterbox
 #画面截图
 from utils.capture import capture
-#雷蛇控制
-from utils.rzctl import RZCONTROL
-#罗技控制
-from utils.logitech_mouse import *
 #鼠标平滑器
-from utils.smooth_mouse import SmoothMouse
+from utils.smooth_mouse import *
 #宏配置
 from utils.macro_controller import MacroController
 #模式配置
 from utils.mode_manager import ModeManager
+#模式上下文
+from utils.mode_manager import ModeContext
+#游戏数学计算
+from utils.game_math import *
 
-#获取根目录
-FILE = Path(__file__).resolve()
-ROOT = FILE.parents[0]  # YOLOv11根目录
-if str(ROOT) not in sys.path:
-    sys.path.append(str(ROOT))
-ROOT = Path(os.path.relpath(ROOT, Path.cwd()))  # 相对路径
-
-#定义全局变量
-aim_range=4 #林蝶
-mouse_driver=cfg.mouse_driver #鼠标选择 #0为罗技 1为雷蛇
-
-#初始化推理模型    
-class Predictor(BaseEngine): 
-    def __init__(self, engine_path):
-        super(Predictor, self).__init__(engine_path)
-        self.n_classes = 1  # your model classes
-
-#可视化线程
-class DisplayThread(threading.Thread):
-    def __init__(self, window_size=(320, 320)):
-        super().__init__()
-        self.image_queue = queue.Queue(maxsize=1)
-        self.running = True
-        self.daemon = True
-        self.window_size = window_size  # 保存窗口尺寸
-        self.window_created = False    # 标记窗口是否已创建
-    def run(self):
-        window_name = 'view'
-        while self.running:
-            try:
-                # 如果窗口还没创建，先创建窗口
-                if not self.window_created:
-                    cv2.namedWindow(window_name, cv2.WINDOW_NORMAL)
-                    cv2.resizeWindow(window_name, self.window_size[0], self.window_size[1])
-                    self.window_created = True
-                    #print(f"窗口已创建，尺寸: {self.window_size}")
-                # 非阻塞获取图像
-                img = self.image_queue.get_nowait()
-                # 显示图像
-                cv2.imshow(window_name, img)
-                # 处理窗口事件（必须在显示线程内）
-                key = cv2.waitKey(1) & 0xFF
-                if key == ord('q'):
-                    print("检测到Q键退出")
-                    self.running = False
-                    break
-            except queue.Empty:
-                # 没有新图像时，也要维持窗口响应
-                if self.window_created:
-                    cv2.waitKey(1)
-                time.sleep(0.001)
-            except Exception as e:
-                print(f"显示线程错误: {e}")
-                time.sleep(0.01)
-        # 清理资源
-        if self.window_created:
-            cv2.destroyAllWindows()
-        print("显示线程结束")
-    def update_image(self, img):
-        """更新显示图像（非阻塞）"""
-        if not self.running:
-            return
-        if img is None:
-            return 
-        try:
-            # 清空队列，只保留最新帧
-            while not self.image_queue.empty():
-                try:
-                    self.image_queue.get_nowait()
-                except queue.Empty:
-                    break        
-            self.image_queue.put_nowait(img)
-        except Exception as e:
-            print(f"更新图像错误: {e}")
-    def stop(self):
-        self.running = False
+#旧画面捕捉
+#from utils.grabscreen import grab_screen
+#键盘码
+#from utils.keybinds import *
+#叠加层
+#from utils.overlay import SkillOverlay
+#显卡使用率
+#from utils.gpu_usage import *
 
 #主函数
 def find_target():
-    global aim_range
+    #在函数开头加入进程伪装
+    import ctypes
+    #修改控制台标题
+    kernel32 = ctypes.windll.kernel32
+    #从预设的伪装列表中随机选择
+    fake_titles = ["svchost.exe", "RuntimeBroker.exe", "taskhostw.exe", "dllhost.exe", "conhost.exe"]
+    title = random.choice(fake_titles)
+    kernel32.SetConsoleTitleW(title)
 
     # 初始化TRT模型
     print("开始加载模型")
-    enemy_pred = Predictor(engine_path=str(ROOT / 'enemy320.trt'))
-    ally_pred = Predictor(engine_path=str(ROOT / 'ally.trt'))
+    enemy_pred = Predictor(engine_path=str( './enemy320_v2.trt'))
+    ally_pred = Predictor(engine_path=str( './ally.trt'))
     print("模型加载完毕")
+
+    #初始化宏控制器，0为启用雷蛇鼠标控制 1为罗技 2为手柄
+    macro_ctl=MacroController(cfg.mouse_driver)
+    #初始化模式配置
+    mode_mgr=ModeManager()
+    #初始化上下文
+    ctx=ModeContext(time.time())
+    #创建线程池，全局只创建一次 最多同时运行任务 
+    executor=ThreadPoolExecutor(max_workers=30)
+    #模型输入尺寸 
+    model_x,model_y=cfg.model_x,cfg.model_y 
+    #平滑
+    smoothX,smoothY=SmoothMouse(),SmoothMouse()
+    #实验性东西
     debug=cfg.debug #debug模式
-    executor = ThreadPoolExecutor(max_workers=30)  #创建线程池，全局只创建一次 最多同时运行任务
-    screen_x,screen_y=cfg.screen_x,cfg.screen_y #显示器分辨率
-    window_x,window_y=cfg.window_x,cfg.window_y #截图窗口尺寸
-    model_x,model_y=cfg.model_x,cfg.model_y #模型输入尺寸
-    aim_fix,aim_fix_time=1,0 #移动补偿
-    #上一帧切片
-    prev_check=None 
-    #可视化
-    show_view=False
-    display_thread = None
-    #时间数据寄存
-    last_combot_time=0 #夜魔侠连招
-    last_key_time=0 #按键检测分频
-    last_afk_time=0 #挂机时间
-    last_capture_time=0 #fps控制
-    last_frame_time=0 #fps统计
-    #fps数据统计
-    frame_count=0
-    loop_count=0
-    #专用FPS控制
-    fps_control=cfg.fps_control
-    frame_interval=1.0/cfg.capture_fps  # 每帧时间
-    #初始参数
-    aim_mode=2 #模式
-    fire_mode=2 #按键
-    aimbot_enable=True #开关
-    auto_trigger=False #扳机
-    x_portion,y_portion=cfg.x_portion,cfg.y_portion #位置
-    speed_x,speed_y=cfg.speed_x,cfg.speed_y #速度
-    aim_range=4.5 #瞄准范围
-    smooth_enable=True #平滑
-    auto_headshot=False #自适应爆头
-    auto_headshot_root=0.3 #自适应爆头开根
-    #特殊按键锁存
-    x2_key=0
-    f9_key=0
-    f11_key=0
-    f12_key=0
-    ins_key=0
-    afk=0
-    mb_key=0
-    ctrl_key=0
-    spiderman_key=0
-    #英伟达截图
-    get_train_pic=0
-    last_get_picture_time=0
-    #初始化平滑器
-    smoothX=SmoothMouse()
-    smoothY=SmoothMouse()
+    #ai每秒循环速度控制
+    fps_control=cfg.fps_control #ai速率控制
+    frame_interval=1.0/cfg.capture_fps #每帧时间
     
-
-    #初始化 Razer 鼠标
-    dll_path =  str(ROOT / "utils" / "rzctl.dll")  # 确保路径正确
-    if not os.path.exists(dll_path):
-        print(f"错误：文件不存在 - {dll_path}")
-    rzr = RZCONTROL(dll_path)
-    if not rzr.init():  # 检查是否初始化成功
-        print("错误：无法初始化 Razer 鼠标控制！")
-    if mouse_driver!=1:
-        mouse_open() #打开罗技鼠标设备
-        print("罗技鼠标控制已初始化")
-
-    # 鼠标移动控制器
-    def mouse_driver_move(x,y):
-        if x==0 and y==0:
-            return
-        if mouse_driver==1:
-            rzr.mouse_move(x,y,True)
-        else:
-            if abs(x)>127:
-                print("鼠标行程超标")
-                x=127
-            if abs(y)>127:
-                print("鼠标行程超标")
-                y=127
-            mouse_move(0, x, y, 0)
-
-    # 初始化宏控制器，把 rzr 传进去
-    macro_ctl = MacroController(rzr)
-
-    # 初始化模式配置
-    mode_manager = ModeManager()
-
-    # 灵蝶冲刺
-    def psylocke_dash():
-        global aim_range
-        time.sleep(0.5)
-        aim_range=4
-
-    round_time=0
-    # 主循环
+    #初始参数
+    mode=mode_mgr.mode_config.get('星爵').copy()
+    #主循环
     while True:
+        #循环开始时间
         now=time.time()
-        loop_count+=1
-
         #按键检测分频
-        if now-last_key_time>0.1: 
-            key = macro_ctl.get_key_more()  
-            last_key_time=now
-        elif debug==1:
-            key=macro_ctl.get_key_all()
-        else:
-            key=macro_ctl.get_key_less()
-
-        #模式切换
-        new_config = mode_manager.get_mode_config(key)
-        if new_config:
-            print(f"{new_config['name']}")
-            aim_mode      = new_config['aim_mode']
-            fire_mode     = new_config['fire_mode']
-            aimbot_enable = new_config['aimbot_enable']
-            auto_trigger  = new_config['auto_trigger']
-            x_portion     = new_config['x_portion']
-            y_portion     = new_config['y_portion']
-            speed_x       = new_config['speed_x']
-            speed_y       = new_config['speed_y']
-            aim_range     = new_config['aim_range']
-            smooth_enable = new_config['smooth_enable']
-            auto_headshot = new_config['auto_headshot']
-
-            # 处理切换模式时的特殊重置逻辑
-            if aim_mode == 1: ctrl_key = 0
-            if aim_mode == 6: mb_key = 0
-            if aim_mode == 10: spiderman_key = 0
-        
-        #特殊配置
-        if 1:
-            if aim_mode==1 and key['mb']: #隐身模式
-                fire_mode=0
-                speed_x=cfg.speed_x
-                speed_y=cfg.speed_y
-                aim_range=2.5
-                aim_mode=1.5
-            if aim_mode==1.5 and (key['lb'] or key['x1']): #短枪模式
-                fire_mode=1
-                speed_x=cfg.speed_x
-                speed_y=cfg.speed_y
-                aim_range=4
-                aim_mode=1
-            if (aim_mode==1 or aim_mode==1.5):
-                if ctrl_key==0 and key['ctrl']: #冲刺之后提升范围
-                    ctrl_key=1
-                    aim_range=10000
-                    threading.Thread(target=psylocke_dash).start()
-                if key['ctrl']==0:
-                    ctrl_key=0  
-
-            if aim_mode==6:
-                if mb_key==0 and key['mb']: #夜魔侠格挡
-                    executor.submit(macro_ctl.daredevil_macro)
-                    mb_key=1
-                if mb_key==1 and key['mb']==0:
-                    mb_key=0
-                if key['lb'] and key['x1'] and key['mb']==0: #夜魔侠连招
-                    if now-last_combot_time>0.1:
-                        executor.submit(macro_ctl.daredevil_combot)
-                        last_combot_time=now
-                if key['lb'] and key['x2'] and key['mb']==0: #夜魔侠连招
-                    if now-last_combot_time>0.1:
-                        executor.submit(macro_ctl.daredevil2_combot)
-                        last_combot_time=now
-
-            if aim_mode==7 and key['x1']: #按x1杀人
-                aim_mode=7.5
-                fire_mode=2
-                x_portion=cfg.x_portion
-                y_portion=cfg.y_portion 
-                speed_x=cfg.speed_x
-                speed_y=cfg.speed_y
-                aim_range=4
-            if aim_mode==7.5 and key['x1']==0: #按左键奶人
-                aim_mode=7
-                fire_mode=1
-                x_portion=0
-                y_portion=55 #另设
-                speed_x=cfg.speed_x
-                speed_y=cfg.speed_y
-                aim_range=1
-
-            if f9_key==0 and auto_headshot and key['f9']: #自适应爆头模式
-                auto_headshot=True
-                f9_key=1
-                print("开启自适应锁头")
-            if f9_key==0 and not auto_headshot and key['f9']:
-                auto_headshot=False
-                f9_key=1
-                print("关闭自适应锁头")               
-            if f9_key==1 and key['f9']==0:
-                f9_key=0
-
-            if aim_mode==10:
-                if spiderman_key==0 and key['mb']: #蜘蛛侠取消后摇连招
-                    spiderman_key=1
-                    threading.Thread(target=macro_ctl.spiderman_macro).start()
-                    print("蜘蛛侠JK宏")
-                if spiderman_key==1 and key['mb']==0:
-                    spiderman_key=0
-                if key['alt']:
-                    aimbot_enable=False
-                    aim_mode=0
-                    print("防误触开启")
-
-            if afk==0 and ins_key==0 and key['insert']:
-                afk=1
-                ins_key=1
-                print("开始挂机")
-            if afk==1 and ins_key==0 and key['insert']:
-                afk=0
-                ins_key=1
-                print("结束挂机")
-            if ins_key==1 and key['insert']==0:
-                ins_key=0
-            if afk==1:
-                if now - last_afk_time < 2:
-                    continue  
-                last_afk_time=now
-                executor.submit(macro_ctl.afk_macro)
-                print("正在挂机===========================================")
-                continue
-
-            if key['delete']:
-                aimbot_enable=False
-                aim_mode=0
-                print("aimbot已关闭")
-            if aimbot_enable==False:
-                time.sleep(0.1)
-                continue
-                
-        #debug配置
         if debug:
-            if f11_key==0 and not show_view and key['f11']:
-                show_view=True
-                f11_key=1
-                # 创建显示线程c
-                if display_thread is None:
-                    display_thread = DisplayThread(window_size=(int(model_x), int(model_y)))
-                    display_thread.start()
-                    print("可视化开 - 显示线程已启动")
-            if f11_key==0 and show_view and key['f11']:
-                show_view=False
-                f11_key=1
-                # 停止显示线程
-                if display_thread is not None:
-                    display_thread.stop()
-                    display_thread.join()
-                    display_thread = None
-                    print("可视化关 - 显示线程已停止")
-            if f11_key==1 and key['f11']==0:
-                f11_key=0
-            if f12_key==0 and get_train_pic==0 and key['f12']:
-                #smooth_enable=True
-                f12_key=1
-                #print("瞄准平滑开")
-                get_train_pic=1
-                print("开始获取训练图片")
-            if f12_key==0 and get_train_pic==1 and key['f12']:
-                #smooth_enable=False
-                f12_key=1
-                #print("瞄准平滑关")
-                get_train_pic=0
-                print("停止获取训练图片")
-            if f12_key==1 and key['f12']==0:
-                f12_key=0
-            if key['up']:
-                y_portion+=0.01
-                print("y_portion:",y_portion)
-                #aim_range+=0.5
-                #print("aim_range:",aim_range)
-                time.sleep(0.2)
-            if key['down']:
-                y_portion-=0.01
-                print("y_portion:",y_portion)
-                #aim_range-=0.5
-                #print("aim_range:",aim_range)
-                time.sleep(0.2)
-            if key['left']:
-                x_portion-=0.01
-                print("y_portion:",x_portion)
-                #smoothX.dec_smooth()
-                #smoothY.dec_smooth()
-                time.sleep(0.2)
-            if key['right']:
-                x_portion+=0.01
-                print("y_portion:",x_portion)
-                #smoothX.inc_smooth()
-                #smoothY.inc_smooth()
-                time.sleep(0.2)
-            if key['prior']:
-                #speed_x+=0.05
-                #speed_y+=0.05
-                #print("speed:",speed_x)
-                auto_headshot_root+=0.05
-                print("root:",auto_headshot_root)
-                time.sleep(0.2)
-            if key['next']:
-                #speed_x-=0.05
-                #speed_y-=0.05
-                #print("speed:",speed_x)
-                auto_headshot_root-=0.05
-                print("root:",auto_headshot_root)
-                time.sleep(0.2)
-
-        #触发按键
-        if fire_mode==-1:
-            aim_mouse=0
-        elif fire_mode==0:
-            aim_mouse=key['shift']==0
-        elif fire_mode==1:
-            aim_mouse=(key['lb'] or key['x1']) and key['shift']==0
-        elif fire_mode==2:
-            aim_mouse=key['x1']
-        elif fire_mode==3:
-            aim_mouse=(key['x2'] or key['rb'] or key['lb']) and key['mb']==0 and key['shift']==0
-        elif fire_mode==6:
-            aim_mouse=key['x1'] or key['x2']
-        elif fire_mode==10:
-            aim_mouse=key['shift']==0 and key['f']==0
+            keys=macro_ctl.get_keys_all()
         else:
-            print("错误：无效的鼠标模式配置")
-            break
+            if now-ctx.last_key_time>0.1: #每0.1秒
+                keys=macro_ctl.get_keys_more()    
+                ctx.last_key_time=now
+            else:
+                keys=macro_ctl.get_keys_less()
         
-        #获取模型训练图片
-        if get_train_pic: 
-            if aim_mouse:
-                if now-last_get_picture_time>2:
-                    executor.submit(macro_ctl.nvidia_capture)
-                    last_get_picture_time=now
+        #获取模式配置
+        new_mode = mode_mgr.get_mode_config(keys)
 
+        #切换模式
+        if new_mode:
+            mode=new_mode
+            #重置上下文
+            ctx.reset(now)
+        
+        #执行英雄操作
+        mode=mode_mgr.hero_action(now,mode,keys,ctx,executor,macro_ctl)
+
+        #执行功能操作
+        if mode_mgr.special_action(now,mode,keys,ctx,executor,macro_ctl,fps_control,frame_interval): continue
+
+        #调试配置
+        if debug:
+            if mode_mgr.debug_action(mode,keys,ctx,model_x,model_y): continue
+          
+        #获取瞄准状态
+        aiming=mode_mgr.get_aim_status(mode['fire'],keys)
+
+        
+        
         #截图
-        if fps_control==1:
-            if now - last_capture_time < frame_interval: #还没到下一帧的时间
-                continue  
-            last_capture_time = now
         img0=capture.get_new_frame()
-        if img0 is None:
-            print("错误：输入图像为空！")
-            continue
-
-        curr_check=img0.ravel()[:300] #极简对比逻辑：拉平数组取前300个值
-        if prev_check is not None and np.array_equal(curr_check, prev_check): #如果图像没有变化，跳过
-            continue  
-        prev_check = curr_check.copy()
-        
-        #round_time+=1
-        #if round_time%3==0:
-        #    continue
-
+        #输入图像为空跳过
+        if img0 is None: continue 
+        #图像没有变化跳过 
+        curr_check=img0.ravel()[:1000] #极简对比逻辑：拉平数组取前1000个值
+        if ctx.prev_check is not None and np.array_equal(curr_check, ctx.prev_check): continue              
+        ctx.prev_check = curr_check.copy()
         #截图遮蔽
-        #cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
-
+        cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
         #可视化
-        if show_view: 
-            resized_display = cv2.resize(img0, (int(model_x), int(model_y)))
-
-        ############################执行推理############################
-        img, ratio, dwdh = letterbox(img0, new_shape=(model_x, model_y)) #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
-        if aim_mode==7: #奶妈使用另外的模型
+        if ctx.show_view: resized_display = cv2.resize(img0, (int(model_x), int(model_y)))
+        #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
+        img, ratio, dwdh = letterbox(img0, new_shape=(model_x, model_y)) 
+        #开始推理 奶妈使用另外的模型
+        if mode['id']==17:
             data = ally_pred.infer(img)
         else:
             data = enemy_pred.infer(img)
-        frame_count += 1 #每秒推理次数统计
-        num, final_boxes, final_scores, final_cls_inds  = data #数量 坐标 置信度 索引
-        ################################################################
+        infer_delay=(time.time()-now)*1000
+        #推理延迟过高 弃用
+        if infer_delay>ctx.delay_threshold: 
+            print('   延迟太高 丢弃   ')
+            continue
 
         
-        #处理目标数据
+        #延迟修正
+        if ctx.delay_fix:
+            if ctx.last_round_time is None:
+                ctx.last_round_time=time.time()
+                delay_factor=1
+            else:
+                ctx.this_round_time=time.time()
+                round_delay=(ctx.this_round_time-ctx.last_round_time)*1000
+                ctx.last_round_time=ctx.this_round_time
+                round_delay_factor=min(round_delay/10,4)
+                infer_delay_factor=-0.02*infer_delay+1.162
+                delay_factor=round_delay_factor*infer_delay_factor
+        else:
+            delay_factor=1
+
+
+        #数量 坐标 置信度 索引
+        num, final_boxes, final_scores, final_cls_inds  = data 
+        #如果识别到目标
         if num > 0:
             #图像缩放坐标还原
             dwdh = np.asarray(dwdh*2, dtype=np.float32)
@@ -498,187 +170,255 @@ def find_target():
             dets = np.concatenate([np.array(final_boxes)[:num_boxes], np.array(final_scores)[:num_boxes], np.array(final_cls_inds)[:num_boxes]], axis=-1)
             #边界框坐标、置信度分数和类别索引
             final_boxes, final_scores, final_cls_inds = dets[:, :4], dets[:, 4], dets[:, 5]
-
             #目标处理
-            target_xywh_list = []
+            target_xywhd_list = []
             target_distance_list = []
+
             #遍历所有检测目标
             for i in range(len(final_boxes)):
                 box = final_boxes[i]
                 score = final_scores[i]
-
                 #可信度过滤
-                if (aim_mode==1.5 or aim_mode==5 or aim_mode==10) and score < 0.6: 
-                    continue
-                    
-                #将边界框的坐标格式从 (x1, y1, x2, y2)（左上角+右下角）转换为 (cx, cy, w, h)（中心点+宽高)
+                if mode_mgr.confidence_filter(score,mode): continue
+                #将边界框的坐标格式从(左上角+右下角)转换为(中心点+宽高)+深度
                 x1, y1, x2, y2 = box
-                xywh = [(x1+x2)/2, (y1+y2)/2, (x2-x1), (y2-y1)]
-                
+                xywhd=[(x1+x2)/2, (y1+y2)/2, (x2-x1), (y2-y1), 0]
+
+                #估算目标距离
+                dist=get_approx_distance(xywhd[2],xywhd[3])
+                percent_x=xywhd[2]/model_x
+                #如果触碰到上下边界，则特殊设置 
+                if xywhd[1]+xywhd[3]/2>(model_y-3) or xywhd[1]-xywhd[3]/2<3:
+                    if percent_x<=0.49:
+                        dist=4
+                    elif percent_x<=0.57:
+                        dist=3
+                    else:
+                        dist=2
+                xywhd[4]=dist
+
                 #可视化
-                if show_view:
+                if ctx.show_view:
                     #绘制边界框
                     cv2.rectangle(resized_display, (int(x1), int(y1)), (int(x2),int(y2)), (0, 255, 0), 1)
                     # 绘制文本
-                    #text = f'{(xywh[0]- model_x/2)/(xywh[2]/2):.1f},{(xywh[1]- model_y/2- y_portion * target_xywh[3])/(xywh[2]/2):.1f}' #目标与中心距离比例
-                    text = f'{xywh[2]:.0f},{xywh[3]:.0f}' #目标
+                    #text = f"{(xywhd[0]- model_x/2)/(xywhd[2]/2):.1f},{(xywhd[1]- model_y/2- mode['Py'] * xywhd[3])/(xywhd[2]/2):.1f}"
+                    #text = f'{round(xywhd[2]):.0f},{round(xywhd[3]):.0f}' #目标上下占比\
+                    text = f'{xywhd[4]:.2f}' #目标上下占比
                     #text = f'{score:.2f}' #置信度
+                    #获取文本尺寸
                     (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
-                    #文本背景
-                    cv2.rectangle(resized_display, (int(x1), int(y1) - text_height - 5),(int(x1) + text_width, int(y1) - 5),(0, 255, 0), -1)
-                    #文本内容
-                    cv2.putText(resized_display, text,(int(x1), int(y1) - 7),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 0, 0), 1)
-                    #瞄准点
-                    if aim_mode==7:#奶妈特调
-                        cv2.circle(resized_display, (int(xywh[0]-x_portion*xywh[2]), int(xywh[1]+y_portion)), 2, (0, 0, 255), -1)
+                    # 判断上方是否有足够空间显示文本
+                    if y1 - text_height - 10 > 0:  # 上方有足够空间
+                        #上文本背景
+                        cv2.rectangle(resized_display, (int(x1), int(y1) - text_height - 5),(int(x1) + text_width, int(y1) - 5),(0, 255, 0), -1)
+                        #上文本内容
+                        cv2.putText(resized_display, text,(int(x1), int(y1) - 7),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 0, 0), 1)
                     else:
-                        cv2.circle(resized_display, (int(xywh[0]+x_portion*xywh[2]), int(xywh[1]-y_portion * xywh[3])), 2, (0, 0, 255), -1)
+                        #下文本背景
+                        cv2.rectangle(resized_display, (int(x1), int(y2) + 5),(int(x1) + text_width, int(y2) + text_height + 5),(0, 255, 0), -1)
+                        #下文本内容
+                        cv2.putText(resized_display, text,(int(x1), int(y2) + text_height + 5),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 0, 0), 1)
+                    #瞄准点
+                    if mode['id']==17:#奶妈特调
+                        cv2.circle(resized_display, (int(xywhd[0]-mode['Px']*xywhd[2]), int(xywhd[1]+mode['Py'])), 2, (0, 0, 255), -1)
+                    else:
+                        cv2.circle(resized_display, (int(xywhd[0]+mode['Px']*xywhd[2]), int(xywhd[1]-mode['Py']*xywhd[3])), 1, (0, 0, 255), -1)
 
-                #目标优先级处理
-                if aim_mode==7:#奶妈特调
-                    target_distance=(xywh[0] - model_x/2)**2 + (xywh[1]+ y_portion - model_y/2)**2
+                #目标距离计算
+                if mode['id']==17:#奶妈特调
+                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]+ mode['Py'] - model_y/2)**2
                 else:
-                    target_distance=(xywh[0] - model_x/2)**2 + (xywh[1]- (y_portion * xywh[3])- model_y/2)**2
+                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]- (mode['Py'] * xywhd[3])- model_y/2)**2
 
                 #特殊目标处理
-                if xywh[3]>0.97*model_y: #防止锁大树
+                if xywhd[3]>0.97*model_y: #防止锁大树
                     continue
+                elif mode['name']=='毒液': #跳过远距离的敌人
+                    if xywhd[3]*xywhd[2]<1100:
+                        continue
+                elif mode['id']==9.5: #蜘蛛侠
+                    if xywhd[3]*xywhd[2]<4000:
+                        continue
 
-                target_xywh_list.append(xywh)
+                target_xywhd_list.append(xywhd)
                 target_distance_list.append(target_distance)
-            
-        #fps计数
-        if now-last_frame_time >= 1.0:
-            fps=frame_count/(now-last_frame_time)
-            lps=loop_count/(now-last_frame_time)
-            print(f"FPS:{fps:>3.0f} {'平滑'if smooth_enable else''}{'锁头'if auto_headshot else''}m{aim_mode} |大招{lps:.0f}")
-            frame_count=0
-            loop_count=0
-            last_frame_time=now
-
-        # 可视化
-        if show_view:
-            cv2.putText(resized_display, f'{fps:>3.0f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
-            # 非阻塞更新显示
-            display_thread.update_image(resized_display)
+        
         
         #选取最近目标
-        if num>0 and target_xywh_list:  
-            min_index = target_distance_list.index(min(target_distance_list))
-            target_xywh = target_xywh_list[min_index]
+        if num>0 and target_xywhd_list: 
+            min_index=target_distance_list.index(min(target_distance_list))
+            target=target_xywhd_list[min_index]
+            target_x=target[0]
+            target_y=target[1]
+            target_w=target[2]
+            target_h=target[3]
+            target_d=target[4]
+            
 
-            #自动扳机
-            if auto_trigger:
-                a=(target_xywh[0]-1*target_xywh[2]/2)
-                b=(target_xywh[0]+1*target_xywh[2]/2)
-                c=(target_xywh[1]-0.95*target_xywh[3]/2)
-                d=(target_xywh[1]+0.8*target_xywh[3]/2)
-                if a<model_x/2<b and c<model_y/2<d:
-                    if key['rb']==0 and key['mb']==0 and key['shift']==0:
+            #寡妇自动扳机
+            if mode['name']=='寡妇':
+                l=(target_x-target_w/2)
+                r=(target_x+target_w/2)
+                t=(target_y-0.95*target_h/2)
+                b=(target_y+0.95*target_h/2)
+                if l<model_x/2<r and t<model_y/2<b:
+                    if keys['rb']==0 and keys['mb']==0 and keys['shift']==0:
                         executor.submit(macro_ctl.trigger_key)
-                        #threading.Thread(target=trigger_key).start()
 
             
-            #X向量动态调整
-            final_x = target_xywh[0] - model_x/2  + x_portion * target_xywh[2]
-            if aim_fix==1 and key['a'] and key['d']==0 and aim_mode!=7: #移动补偿 按A要往右调 黑寡妇开镜调
-                if now-aim_fix_time>0.17:
-                    final_x=target_xywh[0] - model_x/2  + (x_portion+0.15) * target_xywh[2]               
-            if aim_fix==1 and key['d'] and key['a']==0 and aim_mode!=7: #移动补偿 按D要往左调  
-                if now-aim_fix_time>0.17:
-                    final_x=target_xywh[0] - model_x/2  + (x_portion-0.2) * target_xywh[2]                                     
-            if aim_fix==1 and (key['a']==0 and key['d']==0) or(key['a'] and key['d']) and aim_mode!=7: #同时按或者不按则还原
-                aim_fix_time=now
+            #距离补偿
+            if ctx.dist_fix:
+                #估算速度系数
+                dist_factor=get_dist_factor(target_d,ctx.dist_standard_speed)
+            else:
+                dist_factor=1
+
+            
+            #移动补偿
+            if ctx.move_fix: 
+                move_fix_value,ctx.move_time=get_move_fix_value(now, keys['a'], keys['d'], target_d, ctx.move_time, ctx.move_time_threshold)                                   
+                #根据角色修正
+                move_fix_value*=mode['move_fix_adjust']
+
+                if mode['id']==9: #蜘蛛侠 宽度大于60 修正补偿
+                    if percent_x>0.3:
+                        move_fix_value*=0.5
+            else:
+                move_fix_value=0
+            
+             
+            #最终x向量
+            final_x=target_x-model_x/2+mode['Px']*target_w+move_fix_value
+
+            #Y动态调整
+            shift_Py=mode['Py'] #提前写在这里 防止自适应锁头不生效
+            #自适应锁头 平滑锁头位置
+            if mode['headshot']: #and target_w<target_h: 
+                shift_Py=smooth_headshot_position(target_d,mode['headshot_dist'],mode['headshot_pos'],mode['Py']) 
+            #获取特殊Y向量
+            shift_Py=mode_mgr.get_special_Py(mode,keys,shift_Py)
+            #最终y向量
+            final_y=target_y-model_y/2-shift_Py*target_h
 
 
-            #Y向量动态调整
-            shift_y_portion=y_portion
-            if auto_headshot: #自适应锁头
-                threshold=0.3
-                if target_xywh[3]/model_y>threshold: 
-                    x=((target_xywh[3]/model_y)-threshold)/(1-threshold)
-                    y=x**auto_headshot_root
-                    shift_y_portion=y_portion+y*(0.5-y_portion)
-            if aim_mode==2 and key['shift']: #长枪锁头
-                shift_y_portion=0.37
-            if aim_mode==3 and key['shift']: #凤凰锁头
-                shift_y_portion=0.4
-            if aim_mode==3 and key['mb']: #凤凰砸地
-                shift_y_portion=-0.6
-            if aim_mode==5 and key['lb']: #黑寡妇左键
-                shift_y_portion=0.4
-            if aim_mode==22 and (key['rb'] or key['mb'] or key['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 弃用
-                shift_y_portion=0.2 
-            final_y = target_xywh[1]-model_y/2-shift_y_portion*target_xywh[3]
-
-            #奶妈特殊参数
-            if aim_mode==7:
-                if target_xywh[2]>=0.6*model_x: #血条宽度太宽 
+            #奶妈特殊Y向量调整
+            if mode['id']==17:
+                if target_w>=0.6*model_x: #血条宽度太宽 
                     continue
-                elif model_x/2<=target_xywh[2]<0.6*model_x:
-                    shift_y_portion=y_portion-(model_x/2-target_xywh[2])*2
-                elif target_xywh[2]<model_x/2:
-                    shift_y_portion=y_portion
-                final_y = target_xywh[1]-model_y/2+shift_y_portion
+                elif model_x/2<=target_w<0.6*model_x:
+                    shift_Py=mode['Py']-(model_x/2-target_w)*2
+                elif target_w<model_x/2:
+                    shift_Py=mode['Py']
+                final_y=target_y-model_y/2+shift_Py
 
             #计算系数
-            factorX=abs(final_x/(target_xywh[2]/2))
-            factorY=abs(final_y/(target_xywh[2]/2))
+            factorX=final_x/(target_w/2)
+            factorY=final_y/(target_w/2)
 
-            #发送鼠标输入
-            if aim_mouse:
-                if smooth_enable: #平滑
-                    move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
-                    if factorX>2.7: # 平滑左右分界点2.7
-                        move_x=smoothX.update(final_x * speed_x)
-                    #else:
-                        #smoothX.update(final_x * speed_x)
-                    if factorY>3: # 平滑上下分界点3
-                        move_y=smoothY.update(final_y * speed_y)     
-                    #else:                            
-                        #smoothY.update(final_y * speed_y)
-                    smoothX.update2(final_x * speed_x)
-                    smoothY.update2(final_y * speed_y)    
-                else:
-                    move_x,move_y=int(final_x * speed_x),int(final_y * speed_y)
+            #发送输入
+            if aiming:
+                if debug:
+                    if mode['id']==27.5:#测试
+                        #final_x=target_x-model_x/2-100
+                        final_y=target_y-model_y/2-100
+                    if mode['id']==27:
+                        #final_y=0
+                        final_x=0
 
-                    
-                if aim_mode==3: #飞天
-                    if factorX<aim_range and factorY<3.5:
-                        mouse_driver_move(move_x,move_y)
+                move_x,move_y=final_x * mode['Sx'] * delay_factor * dist_factor , final_y * mode['Sy'] * delay_factor * dist_factor
+            
+                if mode['id']==9: #蜘蛛侠 宽度大于60 直接应用原速度
+                    if percent_x>0.3:
+                        move_x,move_y=final_x * delay_factor * dist_factor , final_y * delay_factor * dist_factor
 
-                elif aim_mode==5: #黑寡妇
-                    if key['lb']:
-                        if factorX<10 and factorY<10:
-                            mouse_driver_move(move_x,move_y)
-                    else:    
-                        if  factorX<aim_range and -5<(final_y/(target_xywh[2]/2))<3: #原来是4 和 4
-                            mouse_driver_move(move_x,move_y)
+                if mode['name']=='测试':
+                    if ctx.test_aim==0:
+                        macro_ctl.mouse_driver_move(int(move_x),int(move_y))
+                        ctx.test_aim=1
+                        print(final_x,move_x,mode['Sx'])
+                        print(move_x)
+                        continue
+                    else:
+                        continue
 
-                elif aim_mode==7: #奶妈
-                    if factorX<0.7 and -1<final_y/(target_xywh[2]/2)<0.8:
-                        mouse_driver_move(move_x,move_y)
+                move_x,move_y=smooth_poccess(move_x, move_y, target_d, factorX, factorY, mode['smooth'], target, smoothX, smoothY)
 
-                elif aim_mode==10: #蜘蛛侠
-                    if -aim_range-2<(final_x/(target_xywh[2]/2))<aim_range and factorY<4:
-                        mouse_driver_move(move_x,move_y)
+                #方式一
+                #距离小于8 不管身位了 也不平滑了
+                #距离8以上 平滑
 
-                else:
-                    if factorX<aim_range and -6<(final_y/(target_xywh[2]/2))<4:
-                        mouse_driver_move(move_x,move_y)
-                        #executor.submit(mouse_driver_move,move_x,move_y)
+                
+                #瞄准疲劳
+                #if aim_tired:
+                #    if not aiming:
+                #        aiming=not aiming
+                #        start_aim_time=now
 
+                #    if now-start_aim_time>3:
+                #        #print("瞄准超过3秒")
+                #        random_aim_change=last_random_aim+(random.random()*2-1)*0.1
+                #        random_aim_change = max(-1, min(1, random_aim_change))
+                #        move_x+=random_aim_change*target_w/4
+                #        last_random_aim=random_aim_change
+                      
+
+                #判断是否允许移动
+                if mode_mgr.is_movable(keys,mode,factorX,factorY):
+                    macro_ctl.mouse_driver_move(move_x,move_y)
             else:
-                if smooth_enable:
+                #如果识别到敌人 却没有开锁 重置平滑
+                if mode['smooth']==1:
                     smoothX.clean()
                     smoothY.clean()
 
+                #瞄准疲劳
+                #if aim_tired and aiming:
+                #    aiming=not aiming
+                #    last_random_aim=0
+
+                if debug:
+                    if mode['name']=='测试' and ctx.test_aim==1:
+                        ctx.test_aim=0
+
+        #数据统计
+        ctx.total_frame+=1
+        ctx.total_infer_delay+=infer_delay
+        if now-ctx.last_print_time>=1.0:
+            ctx.fps=ctx.total_frame/(now-ctx.last_print_time)
+            avg_infer_delay=round(ctx.total_infer_delay/ctx.total_frame)
+            ctx.total_infer_delay=0
+            ctx.total_frame=0
+            ctx.last_print_time=now
+
+            print(f"{'录制中 ' if ctx.get_train_pic else ''}"
+                  f"m{mode['id']} "
+                  f"{'Debug ' if debug else ''}"
+                  f"{'滑' if mode['smooth'] else ''}"
+                  f"{'锁' if mode['headshot'] else ''}"
+                  f"{' '}"
+                  f"{ctx.fps:>3.0f}({avg_infer_delay}) "
+                  f"{'延' if ctx.delay_fix else ''}"
+                  f"{'距' if ctx.dist_fix else ''}"
+                  f"{'移' if ctx.move_fix else ''}"
+                  f"{f'延迟补偿{delay_factor:.1f}' if ctx.delay_fix else ''}")
+   
+            #游戏提示
+            if ctx.tip%12==0: 
+                print("")
+                print("   对面谁的大招需要提防")
+                print("   自己的大招要怎么开")
+                print("")
+            ctx.tip+=1
+        
+         #可视化
+        if ctx.show_view:
+            cv2.putText(resized_display, f"mode:{mode['id']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            ctx.display_thread.update_image(resized_display)
 
 if __name__ == '__main__':
     try:
         find_target()
     finally:
         #确保程序退出时释放鼠标资源
-        if mouse_driver!=1:
-            mouse_close()
         print('end')

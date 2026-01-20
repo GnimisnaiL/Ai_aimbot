@@ -8,7 +8,6 @@ from utils import common
 
 import cupy as cp
 
-
 import time
 class BaseEngine(object):
     def __init__(self, engine_path):
@@ -197,6 +196,11 @@ class BaseEngine(object):
             _ = self.infer(img)
         print(100/(time.perf_counter() - t0), 'FPS')
 
+    
+class Predictor(BaseEngine): 
+    def __init__(self, engine_path):
+        super(Predictor, self).__init__(engine_path)
+        self.n_classes = 1  # your model classes
 
 def nms(boxes, scores, nms_thr):
     """Single class NMS implemented in Numpy."""
@@ -373,3 +377,4 @@ def vis(img, boxes, scores, cls_ids, conf=0.5, class_names=None):
         cv2.putText(img, text, (x0, y0 + txt_size[1]), font, 0.4, txt_color, thickness=1)
 
     return img
+

@@ -1,0 +1,2029 @@
+这是main
+import cv2
+import time
+import random
+import numpy as np
+
+
+#线程池
+from concurrent.futures import ThreadPoolExecutor
+#配置文件
+from utils.config_watcher import cfg
+print('模型初始化')
+#模型初始化
+from utils.utils import Predictor
+#画面预处理
+from utils.utils import letterbox
+
+#画面截图
+from utils.capture import capture
+#鼠标平滑器
+from utils.smooth_mouse import *
+#宏配置
+from utils.macro_controller import MacroController
+#模式配置
+from utils.mode_manager import ModeManager
+#模式上下文
+from utils.mode_manager import ModeContext
+#显卡使用率
+from utils.gpu_usage import *
+
+#游戏数学计算
+from utils.game_math import *
+#旧画面捕捉
+#from utils.grabscreen import grab_screen
+#键盘码
+#from utils.keybinds import *
+#叠加层
+#from utils.overlay import SkillOverlay
+
+
+#主函数
+def find_target():
+    #在函数开头加入进程伪装
+    import ctypes
+    #修改控制台标题
+    kernel32 = ctypes.windll.kernel32
+    #从预设的伪装列表中随机选择
+    fake_titles = ["svchost.exe", "RuntimeBroker.exe", "taskhostw.exe", "dllhost.exe", "conhost.exe"]
+    title = random.choice(fake_titles)
+    kernel32.SetConsoleTitleW(title)
+
+    # 初始化TRT模型
+    print("开始加载模型")
+    enemy_pred = Predictor(engine_path=str( './enemy320_v2.trt'))
+    ally_pred = Predictor(engine_path=str( './ally.trt'))
+    print("模型加载完毕")
+
+    #初始化宏控制器，0为启用雷蛇鼠标控制 1为罗技 2为手柄
+    macro_ctl=MacroController(cfg.mouse_driver)
+    #初始化模式配置
+    mode_mgr=ModeManager()
+    #初始化上下文
+    context=ModeContext(time.time())
+    #创建线程池，全局只创建一次 最多同时运行任务 
+    executor=ThreadPoolExecutor(max_workers=30)
+    
+    #模型输入尺寸 
+    model_x,model_y=cfg.model_x,cfg.model_y 
+     
+
+
+    #平滑
+    smoothX=SmoothMouse()
+    smoothY=SmoothMouse()
+    #实验性东西
+    debug=cfg.debug #debug模式
+    #ai每秒循环速度控制
+    fps_control=cfg.fps_control #ai速率控制
+    frame_interval=1.0/cfg.capture_fps #每帧时间
+    
+    
+    
+
+    
+    
+    
+    
+
+    #初始参数
+    mode=mode_mgr.mode_config.get('星爵').copy()
+    #主循环
+    while True:
+        #循环开始时间
+        now=time.time()
+        #按键检测分频
+        if debug:
+            keys=macro_ctl.get_keys_all()
+        else:
+            if now-context.last_key_time>0.1: #每0.1秒
+                keys=macro_ctl.get_keys_more()    
+                context.last_key_time=now
+            else:
+                keys=macro_ctl.get_keys_less()
+        
+        #获取模式配置
+        new_mode = mode_mgr.get_mode_config(keys)
+
+        #切换模式
+        if new_mode:
+            mode=new_mode
+            #重置上下文
+            context.reset(now)
+            # context={
+            #     afk:False
+            #     aimbot_enable:True
+            #     key_rb:0
+            #     key_mb:0
+            #     last_mb_time:now
+            #     last_ctrl_time:now
+            #     last_combo_time:now
+            #     spiderman_key:0
+            #     spiderman2_key:0
+            #     spiderman3_key:0
+            #     venom:0        
+            #     venom_time:now
+            #     venom_health_count:0
+            #     strange_opendoor:0
+            # }
+            
+            
+  
+        #执行英雄操作
+        mode_change=mode_mgr.hero_action(now,mode,keys,context,executor,macro_ctl)
+        if mode_change:
+            mode=mode_change
+
+        #执行功能操作
+        if mode_mgr.special_action(now,mode,keys,context,executor,macro_ctl,fps_control,frame_interval): continue
+
+        #调试配置
+        if mode_mgr.debug_action(debug,mode,keys,context,model_x,model_y): continue
+            
+
+           
+        #获取瞄准状态
+        aiming=mode_mgr.get_aim_status(mode['fire'],keys)
+
+        
+        
+        #截图
+        img0=capture.get_new_frame()
+        #输入图像为空跳过
+        if img0 is None: continue 
+        #图像没有变化跳过 
+        curr_check=img0.ravel()[:1000] #极简对比逻辑：拉平数组取前1000个值
+        if context.prev_check is not None and np.array_equal(curr_check, context.prev_check): continue              
+        context.prev_check = curr_check.copy()
+        #截图遮蔽
+        cv2.rectangle(img0, (0, 126), (25, 426), (255, 0, 0),  -1 )
+        #可视化
+        if context.show_view: resized_display = cv2.resize(img0, (int(model_x), int(model_y)))
+        #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
+        img, ratio, dwdh = letterbox(img0, new_shape=(model_x, model_y)) 
+        #开始推理 奶妈使用另外的模型
+        if mode['id']==17:
+            data = ally_pred.infer(img)
+        else:
+            data = enemy_pred.infer(img)
+        infer_delay=(time.time()-now)*1000
+        #推理延迟过高 弃用
+        if infer_delay>context.delay_threshold: 
+            print('   延迟太高 丢弃   ')
+            continue
+
+        
+
+        #延迟修正
+        if context.delay_fix:
+            if context.last_round_time is None:
+                context.last_round_time=time.time()
+                delay_factor=1
+            else:
+                context.this_round_time=time.time()
+                round_delay=(context.this_round_time-context.last_round_time)*1000
+                context.last_round_time=context.this_round_time
+                round_delay_factor=min(round_delay/10,4)
+                infer_delay_factor=-0.02*infer_delay+1.162
+                delay_factor=round_delay_factor*infer_delay_factor
+        else:
+            delay_factor=1
+
+
+        #处理目标数据
+        num, final_boxes, final_scores, final_cls_inds  = data #数量 坐标 置信度 索引
+        if num > 0:
+            #图像缩放坐标还原
+            dwdh = np.asarray(dwdh*2, dtype=np.float32)
+            final_boxes -= dwdh
+            #转换数据
+            final_boxes = np.reshape(final_boxes/1, (-1, 4))
+            final_scores = np.reshape(final_scores, (-1, 1))
+            final_cls_inds = np.reshape(final_cls_inds, (-1, 1))
+            #弃用dets = np.concatenate([np.array(final_boxes)[:int(num[0])], np.array(final_scores)[:int(num[0])], np.array(final_cls_inds)[:int(num[0])]], axis=-1)
+            #先提取数字，再使用
+            num_boxes = int(num[0].item())  # 或者 int(num.item())
+            dets = np.concatenate([np.array(final_boxes)[:num_boxes], np.array(final_scores)[:num_boxes], np.array(final_cls_inds)[:num_boxes]], axis=-1)
+            #边界框坐标、置信度分数和类别索引
+            final_boxes, final_scores, final_cls_inds = dets[:, :4], dets[:, 4], dets[:, 5]
+            #目标处理
+            target_xywhd_list = []
+            target_distance_list = []
+            #遍历所有检测目标
+            for i in range(len(final_boxes)):
+                box = final_boxes[i]
+                score = final_scores[i]
+                #可信度过滤
+                if mode_mgr.confidence_filter(score,mode): continue
+                #将边界框的坐标格式从(左上角+右下角)转换为(中心点+宽高)+深度
+                x1, y1, x2, y2 = box
+                xywhd=[(x1+x2)/2, (y1+y2)/2, (x2-x1), (y2-y1), 0]
+                xywhd[4]=get_approx_distance(xywhd[2],xywhd[3])
+
+                #可视化
+                if context.show_view:
+                    #绘制边界框
+                    cv2.rectangle(resized_display, (int(x1), int(y1)), (int(x2),int(y2)), (0, 255, 0), 1)
+                    # 绘制文本
+                    #text = f"{(xywhd[0]- model_x/2)/(xywhd[2]/2):.1f},{(xywhd[1]- model_y/2- mode['Py'] * xywhd[3])/(xywhd[2]/2):.1f}"
+                    #text = f'{round(xywhd[2]):.0f},{round(xywhd[3]):.0f}' #目标上下占比\
+                    text = f'{xywhd[4]:.2f}' #目标上下占比
+                    #text = f'{score:.2f}' #置信度
+                    #获取文本尺寸
+                    (text_width, text_height), _ = cv2.getTextSize(text, cv2.FONT_HERSHEY_SIMPLEX, 0.5, 1)
+                    # 判断上方是否有足够空间显示文本
+                    if y1 - text_height - 10 > 0:  # 上方有足够空间
+                        #上文本背景
+                        cv2.rectangle(resized_display, (int(x1), int(y1) - text_height - 5),(int(x1) + text_width, int(y1) - 5),(0, 255, 0), -1)
+                        #上文本内容
+                        cv2.putText(resized_display, text,(int(x1), int(y1) - 7),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 0, 0), 1)
+                    else:
+                        #下文本背景
+                        cv2.rectangle(resized_display, (int(x1), int(y2) + 5),(int(x1) + text_width, int(y2) + text_height + 5),(0, 255, 0), -1)
+                        #下文本内容
+                        cv2.putText(resized_display, text,(int(x1), int(y2) + text_height + 5),cv2.FONT_HERSHEY_SIMPLEX, 0.5,(255, 0, 0), 1)
+                    #瞄准点
+                    if mode['id']==17:#奶妈特调
+                        cv2.circle(resized_display, (int(xywhd[0]-mode['Px']*xywhd[2]), int(xywhd[1]+mode['Py'])), 2, (0, 0, 255), -1)
+                    else:
+                        cv2.circle(resized_display, (int(xywhd[0]+mode['Px']*xywhd[2]), int(xywhd[1]-mode['Py']*xywhd[3])), 1, (0, 0, 255), -1)
+
+                #目标距离计算
+                if mode['id']==17:#奶妈特调
+                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]+ mode['Py'] - model_y/2)**2
+                else:
+                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]- (mode['Py'] * xywhd[3])- model_y/2)**2
+
+                #特殊目标处理
+                if xywhd[3]>0.97*model_y: #防止锁大树
+                    continue
+                elif mode['name']=='毒液': #跳过远距离的敌人
+                    if xywhd[3]*xywhd[2]<1100:
+                        continue
+                elif mode['id']==9.5: #蜘蛛侠
+                    if xywhd[3]*xywhd[2]<4000:
+                        continue
+
+                target_xywhd_list.append(xywhd)
+                target_distance_list.append(target_distance)
+        
+       
+        
+        #选取最近目标
+        if num>0 and target_xywhd_list: 
+            min_index=target_distance_list.index(min(target_distance_list))
+            target=target_xywhd_list[min_index]
+            target_x=target[0]
+            target_y=target[1]
+            target_w=target[2]
+            target_h=target[3]
+            percent_x=target_w/model_x
+
+            #寡妇自动扳机
+            if mode['name']=='寡妇':
+                l=(target_x-1*target_w/2)
+                r=(target_x+1*target_w/2)
+                t=(target_y-0.95*target_h/2)
+                b=(target_y+0.95*target_h/2)
+                if l<model_x/2<r and t<model_y/2<b:
+                    if keys['rb']==0 and keys['mb']==0 and keys['shift']==0:
+                        executor.submit(macro_ctl.trigger_key)
+
+            #估算角色距离
+            dist=get_approx_distance(target_w,target_h)
+            print(dist)
+
+            #如果触碰到上下边界，则特殊设置 
+            if target_y+target_h/2>(model_y-3) or target_y-target_h/2<3:
+                if percent_x<=0.49:
+                    dist=4
+                elif percent_x<=0.57:
+                    dist=3
+                else:
+                    dist=2
+            
+
+            #距离补偿
+            if context.dist_fix:
+                #估算速度系数
+                dist_factor=get_dist_factor(dist,context.dist_standard_speed)
+            else:
+                dist_factor=1
+
+            
+            #移动补偿
+            if context.move_fix: 
+                move_fix_value,context.move_time=get_move_fix_value(now, keys['a'], keys['d'], dist, context.move_time, context.move_time_threshold)                                   
+          
+                move_fix_value*=mode['move_fix_adjust']
+
+                if mode['id']==9: #蜘蛛侠 宽度大于60 修正补偿
+                    if percent_x>0.3:
+                        move_fix_value*=0.5
+            else:
+                move_fix_value=0
+            
+             
+            #最终x向量
+            final_x=target_x-model_x/2+mode['Px']*target_w+move_fix_value
+
+            #Y动态调整
+            shift_Py=mode['Py'] #提前写在这里 防止自适应锁头不生效
+            #自适应锁头 平滑锁头位置
+            if mode['headshot']: #and target_w<target_h: 
+                shift_Py=smooth_headshot_position(dist,mode['headshot_dist'],mode['headshot_pos'],mode['Py']) 
+            #获取特殊Y向量
+            shift_Py=mode_mgr.get_special_Py(mode,keys,shift_Py)
+            #最终y向量
+            final_y=target_y-model_y/2-shift_Py*target_h
+
+
+            #奶妈特殊Y向量调整
+            if mode['id']==17:
+                if target_w>=0.6*model_x: #血条宽度太宽 
+                    continue
+                elif model_x/2<=target_w<0.6*model_x:
+                    shift_Py=mode['Py']-(model_x/2-target_w)*2
+                elif target_w<model_x/2:
+                    shift_Py=mode['Py']
+                final_y=target_y-model_y/2+shift_Py
+
+            #计算系数
+            factorX=final_x/(target_w/2)
+            factorY=final_y/(target_w/2)
+
+            #发送输入
+            if aiming:
+                if debug:
+                    if mode['id']==27.5:#测试
+                        #final_x=target_x-model_x/2-100
+                        final_y=target_y-model_y/2-100
+                    if mode['id']==27:
+                        #final_y=0
+                        final_x=0
+
+                move_x,move_y=final_x * mode['Sx'] * delay_factor * dist_factor , final_y * mode['Sy'] * delay_factor * dist_factor
+            
+                if mode['id']==9: #蜘蛛侠 宽度大于60 直接应用原速度
+                    if percent_x>0.3:
+                        move_x,move_y=final_x * delay_factor * dist_factor , final_y * delay_factor * dist_factor
+
+                if mode['name']=='测试':
+                    if context.test_aim==0:
+                        macro_ctl.mouse_driver_move(int(move_x),int(move_y))
+                        context.test_aim=1
+                        print(final_x,move_x,mode['Sx'])
+                        print(move_x)
+                        continue
+                    else:
+                        continue
+
+                move_x,move_y=smooth_poccess(move_x,move_y,dist,factorX,factorY,mode['smooth'],target,smoothX,smoothY)
+
+                #方式一
+                #距离小于8 不管身位了 也不平滑了
+                #距离8以上 平滑
+
+                
+                #瞄准疲劳
+                #if aim_tired:
+                #    if not aiming:
+                #        aiming=not aiming
+                #        start_aim_time=now
+
+                #    if now-start_aim_time>3:
+                #        #print("瞄准超过3秒")
+                #        random_aim_change=last_random_aim+(random.random()*2-1)*0.1
+                #        random_aim_change = max(-1, min(1, random_aim_change))
+                #        move_x+=random_aim_change*target_w/4
+                #        last_random_aim=random_aim_change
+                      
+
+                #判断是否允许移动
+                if mode_mgr.is_movable(keys,mode,factorX,factorY):
+                    macro_ctl.mouse_driver_move(move_x,move_y)
+            else:
+                #如果识别到敌人 却没有开锁 重置平滑
+                if mode['smooth']==1:
+                    smoothX.clean()
+                    smoothY.clean()
+
+                #瞄准疲劳
+                #if aim_tired and aiming:
+                #    aiming=not aiming
+                #    last_random_aim=0
+
+                if debug:
+                    if mode['name']=='测试' and context.test_aim==1:
+                        context.test_aim=0
+
+        #数据统计
+        context.total_frame+=1
+        context.total_infer_delay+=infer_delay
+        if now-context.last_print_time>=1.0:
+            context.fps=context.total_frame/(now-context.last_print_time)
+            avg_infer_delay=round(context.total_infer_delay/context.total_frame)
+            context.total_infer_delay=0
+            context.total_frame=0
+            context.last_print_time=now
+
+            print(f"{'录制中 ' if context.get_train_pic else ''}"
+                  f"m{mode['id']} "
+                  f"{'Debug ' if debug else ''}"
+                  f"{'延' if debug and context.delay_fix else ''}"
+                  f"{'距' if debug and context.dist_fix else ''}"
+                  f"{'移' if debug and context.move_fix else ''}"
+                  f"{'滑' if mode['smooth'] else ''}"
+                  f"{'锁' if mode['headshot'] else ''}"
+                  f"{' '}"                  
+                  f"{context.fps:>3.0f}({avg_infer_delay}) "
+                  f"{f'延迟补偿{delay_factor:.1f}' if context.delay_fix else ''}")
+
+            
+            #游戏提示
+            if context.tip%12==0: 
+                print("")
+                print("   对面谁的大招需要提防")
+                print("   自己的大招要怎么开")
+                print("")
+            context.tip+=1
+            #性能提示
+            #if False and fps<60 and lps<100:
+            #    print(f"         GPU使用率: {get_gpu_usage():.0f}%")
+            #    executor.submit(get_cpu_usage)
+        
+         #可视化
+        if context.show_view:
+            #cv2.putText(resized_display, f'{fps:>3.0f}', (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            cv2.putText(resized_display, f"mode:{mode['id']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
+            # 非阻塞更新显示
+            context.display_thread.update_image(resized_display)
+
+if __name__ == '__main__':
+    try:
+        find_target()
+    finally:
+        #确保程序退出时释放鼠标资源
+        print('end')
+这是mode_manager
+# 文件路径: utils/mode_manager.py
+from utils.config_watcher import cfg
+import time
+#获取技能cd
+from utils.skill_cd import *
+#可视化线程
+from utils.show_view import DisplayThread
+
+#改变值
+def change_value(name,value,delta,is_sleep=True):
+    value+=delta
+    print(f"{name}: {value:.3f}")
+    if is_sleep:
+        time.sleep(0.2)
+    return value
+
+
+#值锁存
+def key_toggle(state, key_pressed):
+    if state == 0 and key_pressed:
+        return 1, True
+    if state == 1 and not key_pressed:
+        return 0, False
+    return state, None
+
+
+class ModeContext:
+    def __init__(self, now):
+        self.afk = False #挂机
+        self.aimbot_enable = True #自瞄开关
+        self.skill_cd = 1 #技能cd
+        self.get_train_pic = False #获取训练图片
+        
+        self.show_view = False #可视化
+        self.display_thread = None #可视线程
+        self.prev_check = None #上一帧切片
+        self.test_aim = False #测试
+        #补偿
+        self.dist_fix = True #距离补偿
+        self.dist_standard_speed = 3.92 #标准距离单位速度
+        self.move_fix = True #移动补偿
+        self.move_time_threshold = 0.13 #移动补偿启动时间
+        self.delay_fix = False #延迟补偿
+        self.delay_threshold = 50 #推理弃用延迟时间
+
+        self.key_insert = 0
+        self.key_f10 = 0
+        self.key_f11 = 0
+        self.key_f12 = 0
+        self.key_x2 = 0
+        self.key_0 = 0
+        self.key_9 = 0
+        self.key_8 = 0
+
+        self.last_afk_time = now #上一轮挂机时间
+        self.last_key_time = now #按键检测分频时间
+        self.last_print_time = now #打印时间
+        self.last_capture_time = now #fps控制
+        self.last_get_picture_time = now #获取训练图片控制频率
+        self.last_round_time = None #计算每轮循环时间
+        self.move_time = now #移动补偿时间
+
+        #数据统计
+        self.fps=0
+        self.tip=0
+        self.total_frame=0
+        self.total_infer_delay=0
+        
+
+    def reset(self, now):
+        self.afk = False
+        self.aimbot_enable = True
+
+        self.key_rb = 0
+        self.key_mb = 0
+
+        self.last_mb_time = now
+        self.last_ctrl_time = now
+        self.last_combo_time = now
+
+        # 蜘蛛
+        self.spiderman1_key = 0
+        self.spiderman2_key = 0
+        self.spiderman3_key = 0
+
+        # 毒液
+        self.venom = 0
+        self.venom_time = now
+        self.venom_health_count = 0
+
+        # 奇异
+        self.strange_opendoor = 0
+
+class ModeManager:
+    def  __init__(self):
+        self.mode_config={
+            '灵蝶':{
+                'name': "灵蝶", 
+                'id': 1, 
+                'fire': 1,
+                'Px': cfg.x_portion, 
+                'Py': 0.14, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1, 
+                'smooth': 2,
+                'headshot': True,
+                'headshot_dist': 8, 
+                'headshot_pos': 0.25
+            },
+            '灵蝶隐身':{
+                'name': "灵蝶", 
+                'id': 1.5, 
+                'fire': 0, 
+                'trigger': False,
+                'Px': cfg.x_portion, 
+                'Py': 0.14, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 2.5,
+                'move_fix_adjust': 1,
+                'smooth': 2,
+                'headshot': True,
+                'headshot_dist': 8, 
+                'headshot_pos': 0.25
+            },
+            "鹰眼":{
+                'name': "鹰眼", 
+                'id': 11, 
+                'fire': 11,
+                'Px': cfg.x_portion, 
+                'Py': 0.35, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 0.85,
+                'smooth': 0,
+                'headshot': True,
+                'headshot_dist': 8,
+                'headshot_pos': 0.2
+            },
+            "鹰眼连射":{
+                'name': "鹰眼", 
+                'id': 11.3, 
+                'fire': 11,
+                'Px': cfg.x_portion,
+                'Py': 0.4, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 0.95,
+                'smooth': 0,
+                'headshot': False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            "星爵":{
+                'name': "星爵", 
+                'id': 2, 
+                'fire': 2,
+                'Px': cfg.x_portion, 
+                'Py': cfg.y_portion,
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 12,
+                'headshot_pos': 0.37
+            },
+            "海拉":{
+                'name': "海拉", 
+                'id': 12, 
+                'fire': 2,
+                'Px': cfg.x_portion, 
+                'Py': cfg.y_portion,
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 2,
+                'headshot' : True,
+                'headshot_dist': 13,
+                'headshot_pos': 0.37
+            },
+            "暴力":{
+                'name': "暴力", 
+                'id': 22, 
+                'fire': 2,
+                'Px': cfg.x_portion, 
+                'Py': 0.37, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 100,
+                'headshot_pos': 0.37
+            },
+            "凤凰":{
+                'name': "凤凰", 
+                'id': 3, 
+                'fire': 2,
+                'Px': cfg.x_portion, 
+                'Py': 0.1, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 2,
+                'headshot' : True,
+                'headshot_dist': 13,
+                'headshot_pos': 0.4
+            },
+            "飞天":{
+                'name': "飞天", 
+                'id': 13, 
+                'fire': 2,
+                'Px': 0, 
+                'Py': 0.1, 
+                'Sx': cfg.speed_x*1.1,
+                'Sy': cfg.speed_y*1.1,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 2,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0.1
+            },
+            "黑豹":{
+                'name': "黑豹", 
+                'id': 5, 
+                'fire': 1,
+                'Px': cfg.x_portion, 
+                'Py': 0.14, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 0,
+                'headshot': True,
+                'headshot_dist': 8, 
+                'headshot_pos': 0.2
+            },
+            "奇异":{
+                'name': "奇异", 
+                'id': 15, 
+                'fire': -1,
+                'Px': 0, 
+                'Py': 0, 
+                'Sx': 0,
+                'Sy': 0,
+                'range': 4,
+                'move_fix_adjust': 0,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            "寡妇":{
+                'name': "寡妇", 
+                'id': 25, 
+                'fire': 5,
+                'trigger': True,
+                'Px': 0, 
+                'Py': 0.4,
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 3,
+                'move_fix_adjust': 0.5, 
+                'smooth': 2,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0.4
+            },
+            "夜魔":{
+                'name': "夜魔", 
+                'id': 6, 
+                'fire': 6,
+                'Px': cfg.x_portion, 
+                'Py': cfg.y_portion,
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 100,
+                'move_fix_adjust': 1,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 0.3,
+                'headshot_pos': 7
+            },
+            "蜘蛛":{
+                'name': "蜘蛛", 
+                'id': 9, 
+                'fire': 9,
+                'Px': 0.1, 
+                'Py': 0.2, 
+                'Sx': cfg.speed_x/2,
+                'Sy': cfg.speed_y/2,
+                'range': 4,
+                'move_fix_adjust': 2,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            "蜘蛛近战":{
+                'name': "蜘蛛", 
+                'id': 9.5, 
+                'fire': 9,
+                'Px': 0, 
+                'Py': 0.2, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            "毒液":{
+                'name': "毒液", 
+                'id': 19, 
+                'fire': 19,
+                'Px': 0,
+                'Py': 0.4, 
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 100,
+                'move_fix_adjust': 1.2,
+                'smooth': 0,
+                'headshot' : True,
+                'headshot_dist': 8,
+                'headshot_pos': 0.15
+            },
+            "奶妈":{
+                'name': "奶妈", 
+                'id': 17, 
+                'fire': 1,
+                'Px': 0, 
+                'Py': 55,   
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 1,
+                'move_fix_adjust': 0,
+                'smooth': 2,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            "奶妈锁敌":{
+                'name': "奶妈", 
+                'id': 17.5, 
+                'fire': 2,
+                'Px': cfg.x_portion, 
+                'Py': cfg.y_portion,
+                'Sx': cfg.speed_x,
+                'Sy': cfg.speed_y,
+                'range': 4,
+                'move_fix_adjust': 1,
+                'smooth': 2,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            },
+            '测试':{
+                'name': "测试", 
+                'id': 27, 
+                'fire': 2,
+                'Px': 0, 
+                'Py': 0, 
+                'Sx': 4,
+                'Sy': 4,
+                'range': 10000,
+                'move_fix_adjust': 0,
+                'smooth': 0,
+                'headshot' : False,
+                'headshot_dist': 0,
+                'headshot_pos': 0
+            }
+        }
+
+    #可信度过滤
+    def confidence_filter(self, score, mode):
+        if (mode['id']==1.5 or mode['name']=='寡妇' or mode['name']=='蜘蛛') and score < 0.6: 
+            return True
+        else:
+            return False
+
+    #执行特殊英雄操作
+    def hero_action(self, now, mode, keys, context, executor, macro_ctl):
+        if mode['name']=='灵蝶':
+            if mode['id']==1 and keys['mb']: #隐身模式
+                mode=self.mode_config.get('灵蝶隐身').copy()
+            if mode['id']==1.5 and (keys['lb'] or keys['x1']): #短枪模式
+                mode=self.mode_config.get('灵蝶').copy()
+                
+            #if (mode['id']==1 or mode['id']==1.5):
+            #    if ctrl_key==0 and keys['ctrl']: #冲刺之后提升范围
+            #        ctrl_key=1
+            #        mode['range']=10000
+            #        threading.Thread(target=psylocke_dash).start()
+            #    if keys['ctrl']==0:
+            #        ctrl_key=0
+
+        if mode['name']=='鹰眼':
+            if mode['id']==11 and keys['rb']: 
+                mode=self.mode_config.get('鹰眼连射').copy()
+            if mode['id']==11.3 and keys['rb']==0: 
+                mode=self.mode_config.get('鹰眼').copy()
+                
+            if keys['rb']: #连射模式
+                if now-context.last_combo_time>0.05:
+                    executor.submit(macro_ctl.hawkeye_L_macro)
+                    context.last_combo_time=now
+
+        if mode['name']=='凤凰':
+            if context.key_mb==0 and keys['mb']:  #凤凰女中键跳一下
+                executor.submit(macro_ctl.phoenix_J_macro)
+                print("J")
+                context.key_mb=1
+            if context.key_mb==1 and keys['mb']==0:
+                context.key_mb=0
+
+        if mode['name']=='黑豹':
+            if keys['mb']:
+                if now-context.last_mb_time>0.1:
+                    executor.submit(macro_ctl.blackpanther_M_macro)
+                    print("M")
+                    context.last_mb_time=now
+
+        if mode['name']=='夜魔':
+            #夜魔侠格挡前防止卡住
+            if context.key_mb==0 and keys['mb']:  
+                executor.submit(macro_ctl.daredevil_R_macro)
+                print("R")
+                context.key_mb=1
+            if context.key_mb==1 and keys['mb']==0:
+                context.key_mb=0
+            #夜魔侠连招1
+            if keys['x1'] and keys['lb'] and keys['mb']==0: 
+                if now-context.last_combo_time>0.05:
+                    executor.submit(macro_ctl.daredevil_LCRF_macro)
+                    #print("LCRF")
+                    context.last_combo_time=now
+            #夜魔侠连招2
+            if keys['x2'] and keys['lb'] and keys['mb']==0: 
+                if now-context.last_combo_time>0.05:
+                    executor.submit(macro_ctl.daredevil_LCEF_macro)
+                    #print("LCEF")
+                    context.last_combo_time=now
+
+        if mode['name']=='奶妈':
+            if mode['id']==17 and keys['x1']: #x1锁敌
+                mode=self.mode_config.get('奶妈锁敌').copy()
+            if mode['id']==17.5 and keys['x1']==0: #左键奶人
+                mode=self.mode_config.get('奶妈').copy()
+
+        if mode['name']=='蜘蛛':
+            if mode['id']==9 and keys['lb']:
+                mode=self.mode_config.get('蜘蛛近战').copy()
+            if mode['id']==9.5 and keys['lb']==0:
+                mode=self.mode_config.get('蜘蛛').copy()
+
+            #蜘蛛侠连招1 中键
+            if context.spiderman1_key==0 and keys['mb'] and keys['x1']==0: 
+                if keys['ctrl']:
+                    context.spiderman1_key=1
+                    executor.submit(macro_ctl.spiderman_E_macro)
+                    print("E")
+                else:
+                    context.spiderman1_key=1
+                    executor.submit(macro_ctl.spiderman_KR_macro)
+                    print("KR")      
+            if context.spiderman1_key==1 and keys['mb']==0:
+                context.spiderman1_key=0
+
+            #蜘蛛侠连招2 侧键1
+            if context.spiderman2_key==0 and keys['x1']: 
+                context.skill_cd=get_spiderman_cd()
+                if keys['lb']: #蜘蛛侠连招2
+                    context.spiderman2_key=1
+                    executor.submit(macro_ctl.spiderman_RFKRE_macro)
+                    print("RFKRE")
+                if keys['mb']: #蜘蛛侠连招2
+                    if context.skill_cd>1:
+                        context.spiderman2_key=1
+                        executor.submit(macro_ctl.spiderman_LRFKRE_macro)
+                        print("LRFKRE")
+                    else:
+                        context.spiderman2_key=1
+                        executor.submit(macro_ctl.spiderman_LRFKR_macro)
+                        print("LRFKR")
+            if context.spiderman2_key==1 and keys['x1']==0:
+                context.spiderman2_key=0
+
+            #蜘蛛侠连招3 侧键2
+            if context.spiderman3_key==0 and keys['x2']: 
+                context.spiderman3_key=1
+                executor.submit(macro_ctl.spiderman_JF_macro)
+            if context.spiderman3_key==1 and keys['x2']==0:
+                context.spiderman3_key=0
+
+            #蜘蛛侠锁敌
+            if keys['ctrl']:
+                if now-context.last_ctrl_time>0.05:
+                    executor.submit(macro_ctl.spiderman_C_macro)
+                    context.last_ctrl_time=now
+
+        if mode['name']=='毒液':
+            # 右键按下检测
+            if keys['rb'] and context.key_rb == 0:
+                context.key_rb = 1
+                context.venom = 1
+                context.venom_time = now  # 记录按下时间
+            
+            # 右键释放检测
+            if context.key_rb == 1 and not keys['rb']:
+                context.key_rb = 0
+                context.venom = 0
+
+            # 检查是否一直按住超过2.34秒
+            if context.venom == 1 and keys['rb']:  # 确保右键仍然被按住
+                if now - context.venom_time > 2.35:
+                    print('毒液')
+                    context.venom = 0
+                    executor.submit(macro_ctl.venom_utl)
+            #检测生命
+            context.venom_health_count+=1
+            if context.venom_health_count%3==0:
+                if get_venom() and keys['x1'] and keys['tab']==0:
+                    executor.submit(macro_ctl.venom_health)
+
+        return mode
+        
+    #执行特殊功能操作
+    def special_action(self, now, mode, keys, context, executor, macro_ctl, fps_control, frame_interval):
+        if mode['name']=='奇异':
+            if context.strange_opendoor==0 and (keys['x1'] or keys['x2']):
+                if get_strange_countdown():
+                    context.strange_opendoor=1
+                    context.strange_opendoor_time=now
+            if context.strange_opendoor==1 and now-context.strange_opendoor_time>5.14 and keys['x1'] and not keys['mb']:
+                print('开门')
+                executor.submit(macro_ctl.strange_opendoor)
+                context.strange_opendoor=2
+            if context.strange_opendoor==1 and now-context.strange_opendoor_time>5.20 and keys['x1'] and keys['mb']:
+                print('开门')
+                executor.submit(macro_ctl.strange_opendoor)
+                context.strange_opendoor=2
+            return True
+
+        #防误触
+        if (mode['name']=='蜘蛛' or mode['name']=='寡妇' or context.afk) and keys['alt'] and keys['tab']:
+            context.afk=0
+            context.aimbot_enable=False
+            mode['id']=0
+            mode['name']="关闭"
+            print("防误触开启")
+
+        #x1+insert挂机
+        context.key_insert, toggled = key_toggle(context.key_insert, keys['insert'] and keys['x1'])
+        if toggled is True:
+            context.afk=not context.afk
+            if context.afk:
+                context.last_afk_time=now 
+                print("开始挂机")
+            else:
+                print("结束挂机")
+
+        #挂机
+        if context.afk:
+            if now - context.last_afk_time < 2:
+                return True  
+            context.last_afk_time=now
+            executor.submit(macro_ctl.afk_macro)
+            print("正在挂机xxxxxxxxxxxxxxxxxxxxx正在挂机xxxxxxxxxxxxxxxxxxxxx正在挂机")
+            return True
+
+        #长按麦克风
+        if keys['f7'] and not keys['x1'] and not keys['x2'] :
+            print('按下I键')
+            executor.submit(macro_ctl.press_I)
+
+        #x1+f10获取训练图片
+        context.key_f10, toggled = key_toggle(context.key_f10, keys['f10'] and keys['x1'])
+        if toggled is True:
+            context.get_train_pic=not context.get_train_pic
+            if context.get_train_pic:
+                print("自动获取截图")
+                context.last_get_picture_time=now
+            else:
+                print("已关闭获取截图")
+
+        #f12平滑
+        context.key_f12, toggled = key_toggle(context.key_f12, keys['f12'])
+        if toggled is True:
+            mode['smooth'] = (mode['smooth'] + 1) % 3
+            print("smooth:", mode['smooth'])
+
+        #x2锁头
+        context.key_x2, toggled = key_toggle(context.key_x2, keys['x2'])
+        if toggled is True:
+            mode['headshot'] = not mode['headshot']
+            if mode['headshot']:
+                print("打开锁头")
+            else:
+                print("关闭锁头")
+            if mode['name']=='测试':
+                if mode['id']==27:
+                    mode['id']=27.5
+                    print(27.5)
+                    mode['headshot']=0
+                else:
+                    mode['id']=27
+                    print(27)
+                    mode['headshot']=0
+
+        #关闭自瞄
+        if keys['delete']:
+            context.aimbot_enable=False
+            mode['id']=0
+            mode['name']="关闭"
+            print("aimbot已关闭")
+        if not context.aimbot_enable:
+            time.sleep(0.1)
+            return True
+
+        #ai速率控制
+        if fps_control:
+            if now - context.last_capture_time < frame_interval: #还没到下一帧的时间
+                return True 
+            context.last_capture_time = now
+            
+        return False
+
+        #获取模型训练图片
+        if context.get_train_pic: 
+            if self.get_aim_status(mode['fire'],keys):
+                if now-context.last_get_picture_time>2:
+                    executor.submit(macro_ctl.nvidia_capture)
+                    context.last_get_picture_time=now
+
+    #debug
+    def debug_action(self, debug, mode, keys, context, model_x, model_y):
+        if debug:
+            #显示线程
+            context.key_f11, toggled = key_toggle(context.key_f11, keys['f11'])
+            if toggled is True:
+                context.show_view=not context.show_view
+                if context.show_view:
+                    if context.display_thread is None:
+                        context.display_thread = DisplayThread(window_size=(int(model_x), int(model_y)))
+                        context.display_thread.start()
+                        print("显示线程已启动")
+                else:
+                    if context.display_thread is not None:
+                        context.display_thread.stop()
+                        context.display_thread.join()
+                        context.display_thread = None
+                        print(" 显示线程已停止")
+
+            
+            if keys['up']:
+                mode['Py']=change_value("y偏移",mode['Py'],0.01)
+            if keys['down']:
+                mode['Py']=change_value("y偏移",mode['Py'],-0.01)
+            if keys['right']:
+                #move_time_threshold=change_value("移动补偿阈值",move_time_threshold,0.01)
+                #mode['move_fix_adjust']=change_value("移动补偿修正",mode['move_fix_adjust'],0.01)
+                mode['Px']=change_value("x偏移",mode['Px'],0.01)
+            if keys['left']:
+                #move_time_threshold=change_value("移动补偿阈值",move_time_threshold,-0.01)
+                #mode['move_fix_adjust']=change_value("移动补偿修正",mode['move_fix_adjust'],-0.01)
+                mode['Px']=change_value("x偏移",mode['Px'],-0.01)
+            if keys['next']:
+                #mode['Sx']=change_value("速度x",mode['Sx'],0.01)
+                #mode['Sy']=change_value("速度y",mode['Sy'],0.01,False)
+                mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],0.5)
+            if keys['prior']:
+                #mode['Sx']=change_value("速度x",mode['Sx'],-0.01)
+                #mode['Sy']=change_value("速度y",mode['Sy'],-0.01,False)
+                mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],-0.5)
+                
+
+            
+            #移动补偿
+            context.key_0, toggled = key_toggle(context.key_0, keys['0'])
+            if toggled is True:
+                context.move_fix=not context.move_fix
+                if context.move_fix:
+                    print("开启移动补偿")
+                else:
+                    print("关闭移动补偿")
+
+            #距离补偿
+            context.key_9, toggled = key_toggle(context.key_9, keys['9'])
+            if toggled is True:
+                context.dist_fix=not context.dist_fix
+                if context.dist_fix:
+                    print("开启距离补偿")
+                else:
+                    print("关闭距离补偿")
+
+            #延迟补偿
+            context.key_8, toggled = key_toggle(context.key_8, keys['8'])
+            if toggled is True:
+                context.delay_fix=not context.delay_fix
+                if context.delay_fix:
+                    print("开启延迟补偿")
+                else:
+                    print("关闭延迟补偿")
+
+    #根据按键获取模式配置
+    def get_mode_config(self, keys):
+
+        config=None
+        if keys['f1']:
+            config = self.mode_config.get('灵蝶').copy()
+        if keys['x1'] and keys['f1']:
+            config = self.mode_config.get('鹰眼').copy()
+        if keys['f2']:
+            config = self.mode_config.get('星爵').copy()
+        if keys['x1'] and keys['f2']:
+            config = self.mode_config.get('海拉').copy()
+        if keys['x2'] and keys['f2']:
+            config = self.mode_config.get('暴力').copy()
+        if keys['f3']:
+            config = self.mode_config.get('凤凰').copy()
+        if keys['x1'] and keys['f3']:
+            config = self.mode_config.get('飞天').copy()
+        if keys['f5']:
+            config = self.mode_config.get('黑豹').copy()
+        if keys['x1'] and keys['f5']:
+            config = self.mode_config.get('奇异').copy()
+        if keys['x2'] and keys['f5']:
+            config = self.mode_config.get('寡妇').copy()
+        if keys['f6']:
+            config = self.mode_config.get('夜魔').copy()
+        if keys['x1'] and keys['f7']:
+            config = self.mode_config.get('奶妈').copy()
+        if keys['f9']:
+            config = self.mode_config.get('蜘蛛').copy()
+        if keys['x1'] and keys['f9']:
+            config = self.mode_config.get('毒液').copy()
+        if keys['x2'] and keys['f7']:
+            config = self.mode_config.get('测试').copy()
+
+        #打印信息
+        if config is not None:
+            print(f"{config['name']} 坐标:({config['Px']*100:.0f},{(config['Py']*100):.0f}) 爆头距离:{config['headshot_dist']} 爆头位置:{config['headshot_pos']}")
+        return config
+
+    #根据瞄准配置获取瞄准状态
+    def get_aim_status(self, fire, keys):
+
+        if fire==-1:
+            aiming=0
+        elif fire==0:
+            aiming=keys['shift']==0
+        elif fire==1:
+            aiming=(keys['lb'] or keys['x1']) and keys['shift']==0
+        elif fire==11:
+            aiming=(keys['lb'] or keys['rb']) and keys['shift']==0
+        elif fire==2:
+            aiming=keys['x1']
+        elif fire==5:
+            aiming=(keys['x2'] or keys['rb'] or keys['lb']) and keys['mb']==0 and keys['shift']==0
+        elif fire==6:
+            aiming=keys['x1'] or keys['x2']
+        elif fire==9:
+            aiming=keys['shift']==0
+        elif fire==19:
+            aiming=keys['x1'] and keys['shift']==0 and keys['ctrl']==0
+        else:
+            aiming=0
+            print("错误:无效的瞄准配置")
+
+        return aiming
+
+
+    #获取特殊偏移
+    def get_special_Py(self, mode, keys, shift_Py):
+        special_Py=shift_Py
+
+        if mode['name']=='鹰眼' and keys['shift']: #鹰眼锁身体
+            special_Py=0.44
+        if mode['name']=='星爵' and keys['rb']: #星爵右键
+            special_Py=0.2
+        if mode['name']=='海拉' and keys['shift']: #海拉锁头
+            special_Py=0.37
+        if mode['name']=='海拉' and keys['mb']: #海拉中键
+            special_Py=-0.3
+        if mode['name']=='凤凰' and keys['shift']: #凤凰锁头
+            special_Py=0.4
+        if mode['name']=='凤凰' and keys['mb']: #凤凰砸地
+            special_Py=-0.6
+        if mode['name']=='寡妇' and keys['lb']: #黑寡妇左键
+            special_Py=0.4
+        if mode['name']=='黑豹' and keys['rb']:
+            special_Py=-0.6
+        if mode['name']=='毒液' and keys['mb']: #毒液中键
+            special_Py=0.15
+        if mode['name']=='暴力' and (keys['rb'] or keys['mb'] or keys['shift']): # 暴力锁头 右键按下时瞄准中间 海拉星爵右键 
+            special_Py=0.2 
+
+        return special_Py
+
+    #根据目标信息判断是否允许移动
+    def is_movable(self, keys, mode, factorX, factorY):
+        allow=False
+
+        if mode['name']=='星爵' : #星爵模式
+            if abs(factorX)<mode['range'] and abs(factorY)<7:
+                allow=True
+
+        elif mode['name']=='海拉' and keys['mb']: #海拉模式
+            if abs(factorX)<mode['range'] and abs(factorY)<10:
+                allow=True
+
+        elif mode['name']=='凤凰' and keys['mb']: #凤凰模式
+            if abs(factorX)<mode['range'] and abs(factorY)<10:
+                allow=True
+
+        elif mode['name']=='飞天': #飞天模式
+            if abs(factorX)<mode['range'] and -4<factorY<4:
+                allow=True
+
+        elif mode['name']=='黑豹': #飞天模式
+            if abs(factorX)<mode['range'] and abs(factorY)<mode['range']:
+                allow=True
+
+        elif mode['name']=='寡妇' and keys['lb']: #黑寡妇
+            if abs(factorX)<10 and abs(factorY)<10:
+                    allow=True
+
+        elif mode['id']==17: #奶妈
+            if abs(factorX)<0.7 and -1<factorY<0.8:
+                allow=True
+
+        elif mode['name']=='蜘蛛': #蜘蛛侠
+            if -mode['range']-2<factorX<mode['range'] and abs(factorY)<3.5:
+                allow=True
+
+        elif mode['id']==9.5: #蜘蛛侠近战
+            if abs(factorX)<7 and abs(factorY)<7:
+                allow=True
+
+        elif mode['name']=='毒液': #毒液
+            if -mode['range']-2<factorX<mode['range'] and abs(factorY)<100:
+                allow=True
+
+        elif mode['name']=='测试': #测试
+            allow=True
+
+        else:
+            if abs(factorX)<mode['range'] and -6<factorY<4:
+                allow=True
+
+        return allow
+这是game_math代码
+import time
+
+#根据高度和 宽度 估算角色距离 
+def get_approx_distance(target_w, target_h):
+    #体型修正
+    aspect = target_w/max(target_h, 1)
+    #if aspect>0.6:
+    #    print("体型异常，宽高比为",aspect)
+    aspect = max(0.20, min(0.60, aspect))
+                
+    #基础距离（高度主导）
+    base=1100/max(target_w/aspect, 1)
+    #输出位 aspect ≈ 0.38，作为中性参考
+    correction=1+0.9*(aspect-0.38)
+    estimatedTargetDistance=base*correction
+    
+    return estimatedTargetDistance
+
+#计算距离补偿系数
+def get_dist_factor(estimatedTargetDistance, standard_dist_speed):
+    return ((8.2/estimatedTargetDistance)+3.5)/standard_dist_speed
+
+#计算距离修正值
+def get_correction_value(estimatedTargetDistance):
+    return 150/(estimatedTargetDistance + 1.5)
+
+#计算移动补偿值
+def get_move_fix_value(now, a_pressed, d_pressed, dist, move_time, move_time_threshold,):
+    """
+    计算移动修正值
+    
+    参数:
+    a_pressed: A键是否按下
+    d_pressed: D键是否按下
+    dist: 距离参数
+    move_fix_time: 上次修正时间
+    now: 当前时间
+    move_time_threshold: 时间阈值（需要在外部定义）
+    
+    返回:
+    修正值
+    """
+    elapsed_time = now - move_time
+    # 同时按A和D，或者都不按
+    if (a_pressed == 0 and d_pressed == 0) or (a_pressed and d_pressed):
+        return 0,now
+    
+    # 只按A键
+    elif a_pressed and not d_pressed:
+        
+        if elapsed_time > move_time_threshold:
+            return get_correction_value(dist),move_time
+        else:
+            return 0,move_time
+        # else:
+        #     # 线性插值：从0到最终值
+        #     base_value = get_correction_value(dist)
+        #     t = elapsed_time / move_time_threshold  # 归一化时间 [0, 1]
+        #     return base_value * t,move_fix_time
+        
+            
+    
+    # 只按D键
+    elif d_pressed and not a_pressed:
+        if elapsed_time > move_time_threshold:
+            return -1 * get_correction_value(dist),move_time
+        else:
+            return 0,move_time
+        # else:
+        #     # 线性插值：从0到最终值
+        #     base_value = get_correction_value(dist)
+        #     t = elapsed_time / move_time_threshold  # 归一化时间 [0, 1]
+        #     return -1 * base_value * t,move_fix_time
+        
+    
+    # 其他情况（理论上不会执行到这里）
+    return 0,now
+
+#平滑锁头位置
+def smooth_headshot_position(dist, headshot_dist, headshot_pos, position_y):
+    lower = headshot_dist - 0.5
+    upper = headshot_dist + 0.5
+    if dist <= lower:
+        return headshot_pos
+    elif dist >= upper:
+        return position_y
+    else:
+        # 线性插值
+        ratio = (dist - lower) / (upper - lower)  
+        return headshot_pos + ratio * (position_y - headshot_pos)
+
+#根据目标体型或者距离 进行速度限制或者平滑
+def smooth_poccess(move_x, move_y, dist, factorX, factorY, smooth, target, smoothX ,smoothY):
+    
+    #if dist<10:
+    #    return move_x,move_y
+    if smooth==1: #平滑1 取上次输出值平滑
+        if abs(factorX)>2.7: # 平滑左右分界点2.7
+            move_x=smoothX.update(move_x)
+        else:
+            smoothX.clean()
+        if abs(factorY)>3: # 平滑上下分界点3
+            move_y=smoothY.update(move_y)     
+        else:
+            smoothX.clean()
+
+    elif smooth==2: #平滑2
+        if factorX>1.5:
+            move_x=target[2]*1.5/2
+        if factorX<-1.5:
+            move_x=-target[2]*1.5/2
+
+        if factorY>2:
+            move_y=target[2]*1.5/2
+        if factorY<-2:
+            move_y=-target[2]*1.5/2
+
+    elif smooth==3: #平滑3
+        if factorX>5:
+            move_x=move_x*0.8
+        if factorX<-5:
+            move_x=move_x*0.8
+
+        if factorY>5:
+            move_y=move_y*0.8
+        if factorX<-5:
+            move_y=move_y*0.8
+    return move_x,move_y
+
+这是我的macro_controller代码 
+ # 文件路径: utils/macro_controller.py
+import time
+import os
+import win32api
+import win32con
+#雷蛇控制
+from utils.rzctl import RZCONTROL
+#罗技控制
+from utils.logitech_mouse import *
+from utils.virtual_gamepad import VirtualGamepad
+
+
+class MacroController:
+    def __init__(self,mouse_driver):
+        """
+        初始化控制器
+        """
+        self.mouse_driver=mouse_driver
+
+        #初始化 Razer 鼠标
+        dll_path =  str("./utils/rzctl.dll")  # 确保路径正确
+
+        if not os.path.exists(dll_path):
+            print(f"错误：雷蛇dll文件不存在 - {dll_path}")
+
+        self.rzr = RZCONTROL(dll_path)
+
+        if not self.rzr.init():  # 检查是否初始化成功
+            print("错误：无法初始化 Razer 鼠标控制！")
+
+        if self.mouse_driver==1:
+            mouse_open() #打开罗技鼠标设备
+            print("罗技鼠标控制已初始化")
+        elif self.mouse_driver==2:
+            self.virtual_gamepad=VirtualGamepad()
+
+
+    def high_precision_sleep(self,duration):
+        """
+        使用 perf_counter 进行忙等待，实现微秒级精度
+        """
+        start_time = time.perf_counter()
+        while time.perf_counter() - start_time < duration:
+            pass
+
+    # 鼠标移动控制器
+    def mouse_driver_move(self,x,y):
+        if abs(round(x))<2 and abs(round(y))<2:
+            return
+        if self.mouse_driver==0:
+            self.rzr.mouse_move(round(x),round(y),True)
+        elif self.mouse_driver==1:
+            if abs(round(x))>127:
+                print("鼠标行程超标")
+                x=127
+            if abs(round(y))>127:
+                print("鼠标行程超标")
+                y=127
+            mouse_move(0, round(y), round(y), 0)
+        elif self.mouse_driver==2:
+            self.virtual_gamepad.set_right_stick(x/80,-y/80)
+
+
+    # 批量获取按键状态
+    def get_keys_less(self):
+        keys = {
+            'f1': 0,
+            'f2': 0,
+            'f3': 0,
+            'f5': 0,
+            'f6': 0,
+            'f7':  0,
+            'f9':  0,
+            'f10': 0,
+            'f11': 0,
+            'f12': 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'prior': 0,
+            'next': 0,
+            'alt': 0,
+            'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
+            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0,
+            'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
+            'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
+            'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
+            'mb': win32api.GetAsyncKeyState(win32con.VK_MBUTTON) & 0x8000 != 0,
+            'x1': win32api.GetAsyncKeyState(win32con.VK_XBUTTON1) & 0x8000 != 0,
+            'x2': win32api.GetAsyncKeyState(win32con.VK_XBUTTON2) & 0x8000 != 0,
+            'shift': win32api.GetAsyncKeyState(win32con.VK_SHIFT) & 0x8000 != 0,
+            'ctrl' : win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000 != 0,
+            'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
+            'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
+            '0': 0,
+            '9': 0,
+            '8': 0,
+            '7': 0
+        }
+        return keys
+    def get_keys_more(self):
+        keys = {
+            'f1': win32api.GetAsyncKeyState(win32con.VK_F1) & 0x8000 != 0,
+            'f2': win32api.GetAsyncKeyState(win32con.VK_F2) & 0x8000 != 0,
+            'f3': win32api.GetAsyncKeyState(win32con.VK_F3) & 0x8000 != 0,
+            'f5': win32api.GetAsyncKeyState(win32con.VK_F5) & 0x8000 != 0,
+            'f6': win32api.GetAsyncKeyState(win32con.VK_F6) & 0x8000 != 0,
+            'f7': win32api.GetAsyncKeyState(win32con.VK_F7) & 0x8000 != 0,
+            'f9': win32api.GetAsyncKeyState(win32con.VK_F9) & 0x8000 != 0,
+            'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
+            'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
+            'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'prior': 0,
+            'next': 0,
+            'alt': win32api.GetAsyncKeyState(win32con.VK_MENU) & 0x8000 !=0,
+            'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
+            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0,
+            'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
+            'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
+            'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
+            'mb': win32api.GetAsyncKeyState(win32con.VK_MBUTTON) & 0x8000 != 0,
+            'x1': win32api.GetAsyncKeyState(win32con.VK_XBUTTON1) & 0x8000 != 0,
+            'x2': win32api.GetAsyncKeyState(win32con.VK_XBUTTON2) & 0x8000 != 0,
+            'shift': win32api.GetAsyncKeyState(win32con.VK_SHIFT) & 0x8000 != 0,
+            'ctrl' : win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000 != 0,
+            'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
+            'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
+            '0': 0,
+            '9': 0,
+            '8': 0,
+            '7': 0
+
+        }
+        return keys
+    def get_keys_all(self):
+        keys = {
+            'f1': win32api.GetAsyncKeyState(win32con.VK_F1) & 0x8000 != 0,
+            'f2': win32api.GetAsyncKeyState(win32con.VK_F2) & 0x8000 != 0,
+            'f3': win32api.GetAsyncKeyState(win32con.VK_F3) & 0x8000 != 0,
+            'f5': win32api.GetAsyncKeyState(win32con.VK_F5) & 0x8000 != 0,
+            'f6': win32api.GetAsyncKeyState(win32con.VK_F6) & 0x8000 != 0,
+            'f7': win32api.GetAsyncKeyState(win32con.VK_F7) & 0x8000 != 0,
+            'f9': win32api.GetAsyncKeyState(win32con.VK_F9) & 0x8000 != 0,
+            'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
+            'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
+            'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
+            'up': win32api.GetAsyncKeyState(win32con.VK_UP) & 0x8000 !=0,
+            'down': win32api.GetAsyncKeyState(win32con.VK_DOWN) & 0x8000 !=0,
+            'left': win32api.GetAsyncKeyState(win32con.VK_LEFT) & 0x8000 !=0,
+            'right': win32api.GetAsyncKeyState(win32con.VK_RIGHT) & 0x8000 !=0,
+            'prior': win32api.GetAsyncKeyState(win32con.VK_PRIOR) & 0x8000 !=0,
+            'next': win32api.GetAsyncKeyState(win32con.VK_NEXT) & 0x8000 !=0,
+            'alt': win32api.GetAsyncKeyState(win32con.VK_MENU) & 0x8000 !=0,
+            'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
+            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 !=0,
+            'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
+            'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
+            'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
+            'mb': win32api.GetAsyncKeyState(win32con.VK_MBUTTON) & 0x8000 != 0,
+            'x1': win32api.GetAsyncKeyState(win32con.VK_XBUTTON1) & 0x8000 != 0,
+            'x2': win32api.GetAsyncKeyState(win32con.VK_XBUTTON2) & 0x8000 != 0,
+            'shift': win32api.GetAsyncKeyState(win32con.VK_SHIFT) & 0x8000 != 0,
+            'ctrl' : win32api.GetAsyncKeyState(win32con.VK_CONTROL) & 0x8000 != 0,
+            'a': win32api.GetAsyncKeyState(0x41) & 0x8000 != 0,
+            'd': win32api.GetAsyncKeyState(0x44) & 0x8000 != 0,
+            '0': win32api.GetAsyncKeyState(0x30) & 0x8000 != 0,
+            '9': win32api.GetAsyncKeyState(0x39) & 0x8000 != 0,
+            '8': win32api.GetAsyncKeyState(0x38) & 0x8000 != 0,
+            '7': win32api.GetAsyncKeyState(0x37) & 0x8000 != 0
+        }
+        return keys
+
+    # 自动扳机触发函数 按键J
+    def trigger_key(self):
+        self.rzr.keyboard_input(36, 0)
+        time.sleep(0.001)
+        self.rzr.keyboard_input(36, 1)
+
+
+    # 夜魔侠格挡 按键R
+    def daredevil_R_macro(self):
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1)
+        self.rzr.keyboard_input(19, 1)
+    
+    # 夜魔侠1
+    def daredevil_LCRF_macro(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.01)
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(46, 0) #C
+        time.sleep(0.01)
+        self.rzr.keyboard_input(46, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.01)
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+
+    # 夜魔侠2
+    def daredevil_LCEF_macro(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.01)
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(46, 0) #C
+        time.sleep(0.01)
+        self.rzr.keyboard_input(46, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01)
+        self.rzr.keyboard_input(18, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+
+    # 蜘蛛侠
+    def spiderman_KRE_macro(self):
+        self.rzr.keyboard_input(37, 0) #K
+        time.sleep(0.01)
+        self.rzr.keyboard_input(37, 1)
+        time.sleep(0.09)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.22) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+
+    # 蜘蛛侠E
+    def spiderman_E_macro(self):
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+
+
+    # 蜘蛛侠 shift-右键
+    def spiderman_KR_macro(self):
+        self.rzr.keyboard_input(37, 0) #K
+        time.sleep(0.1)
+        self.rzr.keyboard_input(37, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        
+
+    # 蜘蛛侠
+    def spiderman_ELRF_macro(self):
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+        time.sleep(0.1)
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.2)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(33, 1)
+
+    # 蜘蛛侠 
+    def spiderman_RELRF_macro(self):
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.187)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.03)  
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.18) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+
+    # 蜘蛛侠
+    def spiderman_RFKRE_macro(self):
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+        time.sleep(0.3)
+        self.rzr.keyboard_input(37, 0) #K
+        time.sleep(0.01)
+        self.rzr.keyboard_input(37, 1)
+        time.sleep(0.09)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.22) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+
+
+    # 蜘蛛侠
+    def spiderman_LRFKRE_macro(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.187) 
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+        time.sleep(0.3)
+        self.rzr.keyboard_input(37, 0) #K
+        time.sleep(0.01)
+        self.rzr.keyboard_input(37, 1)
+        time.sleep(0.09)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.22) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 0) #E
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(18, 1)
+
+    # 蜘蛛侠
+    def spiderman_LRFKR_macro(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.187) 
+        self.rzr.keyboard_input(38, 1)
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 1)
+        time.sleep(0.3)
+        self.rzr.keyboard_input(37, 0) #K
+        time.sleep(0.01)
+        self.rzr.keyboard_input(37, 1)
+        time.sleep(0.09)
+        self.rzr.keyboard_input(19, 0) #R
+        time.sleep(0.1) 
+        self.rzr.keyboard_input(19, 1)
+
+    # 蜘蛛侠 跳+上勾拳
+    def spiderman_JF_macro(self):
+        self.rzr.keyboard_input(36, 0) #J
+        time.sleep(0.01)
+        self.rzr.keyboard_input(36, 1)
+        time.sleep(0.01)
+        self.rzr.keyboard_input(33, 0) #F
+        time.sleep(0.1)
+        self.rzr.keyboard_input(33, 1)
+
+    # 蜘蛛侠 c
+    def spiderman_C_macro(self):
+        self.rzr.keyboard_input(46, 0) #C
+        self.high_precision_sleep(0.01)
+        self.rzr.keyboard_input(46, 1)
+
+
+    # 挂机宏 按键空格
+    def afk_macro(self):
+        self.rzr.keyboard_input(57, 0)
+        time.sleep(0.1)
+        self.rzr.keyboard_input(57, 1)
+
+    # 英伟达截图 按键F4                                                                                   
+    def nvidia_capture(self):
+        self.rzr.keyboard_input(62, 0)
+        time.sleep(0.1)
+        self.rzr.keyboard_input(62, 1)
+
+    # RTSS限制帧数 alt+8
+    def rtss_set_framerate_to_80(self):
+        self.rzr.keyboard_input(56, 0)
+        self.rzr.keyboard_input(9, 0)
+        time.sleep(1)
+        self.rzr.keyboard_input(56, 1)
+        self.rzr.keyboard_input(9, 1)
+
+    # RTSS接触限制帧数 alt+0
+    def rtss_set_framerate_to_100(self):
+        self.rzr.keyboard_input(56, 0)
+        self.rzr.keyboard_input(11, 0)
+        time.sleep(1)
+        self.rzr.keyboard_input(56, 1)
+        self.rzr.keyboard_input(11, 1)
+
+    # RTSS接触限制帧数 alt+F8
+    def rtss_set_framerate_to_0(self):
+        self.rzr.keyboard_input(56, 0)
+        self.rzr.keyboard_input(66, 0)
+        time.sleep(1)
+        self.rzr.keyboard_input(56, 1)
+        self.rzr.keyboard_input(66, 1)
+
+    # cd提示
+    def notice_cd(self):
+        self.rzr.keyboard_input(4, 0) #3
+        time.sleep(0.01)
+        self.rzr.keyboard_input(4, 1)
+
+    # 开门
+    def opendoor(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(38, 1)
+
+    # 毒液
+    def venom_utl(self):
+        self.rzr.keyboard_input(16, 0) #Q
+        time.sleep(0.03) 
+        self.rzr.keyboard_input(16, 1)
+        time.sleep(0.6)
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.3) 
+        self.rzr.keyboard_input(38, 1)
+
+    # 毒液
+    def venom_health(self):
+        self.rzr.keyboard_input(46, 0) #C
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(46, 1)
+
+     # 毒液开大提示
+    def venom_notice(self):
+        self.rzr.keyboard_input(5, 0) #4
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(5, 1)
+
+    #按下I
+    def press_I(self):
+        self.rzr.keyboard_input(23, 0) #I
+        time.sleep(1)
+
+    #放开I
+    def release_I(self):
+        self.rzr.keyboard_input(23, 1) #I
+
+    def phoenix_J_macro(self):
+        self.rzr.keyboard_input(36, 0) #J
+        time.sleep(0.01)
+        self.rzr.keyboard_input(36, 1)
+
+    def hawkeye_L_macro(self):
+        self.rzr.keyboard_input(38, 0) #L
+        time.sleep(0.03) 
+        self.rzr.keyboard_input(38, 1)
+
+    def blackpanther_M_macro(self):
+        self.rzr.keyboard_input(50, 0) #M
+        time.sleep(0.01) 
+        self.rzr.keyboard_input(50, 1)
+
+
+
+# Scancode    Keyboard Key
+# 1   ESC
+# 2   1
+# 3   2
+# 4   3
+# 5   4
+# 6   5
+# 7   6
+# 8   7
+# 9   8
+# 10  9
+# 11  0
+# 12  -
+# 13  =
+# 14  bs
+# 15  Tab
+# 16  Q
+# 17  W
+# 18  E
+# 19  R
+# 20  T
+# 21  Y
+# 22  U
+# 23  I
+# 24  O
+# 25  P
+# 26  [
+# 27  ]
+# 28  Enter
+# 29  CTRL
+# 30  A
+# 31  S
+# 32  D
+# 33  F
+# 34  G
+# 35  H
+# 36  J
+# 37  K
+# 38  L
+# 39  ;
+# 40  '
+# 41  `
+# 42  LShift
+# 43  \
+# 44  Z
+# 45  X
+# 46  C
+# 47  V
+# 48  B
+# 49  N
+# 50  M
+# 51  ,
+# 52  .
+# 53  /
+# 54  RShift
+# 55  PrtSc
+# 56  Alt
+# 57  Space
+# 58  Caps
+# 59  F1
+# 60  F2
+# 61  F3
+# 62  F4
+# 63  F5
+# 64  F6
+# 65  F7
+# 66  F8
+# 67  F9
+# 68  F10
+# 69  Num
+# 70  Scroll
+# 71  Home (7)
+# 72  Up (8)
+# 73  PgUp (9)
+# 74  -
+# 75  Left (4)
+# 76  Center (5)
+# 77  Right (6)
+# 78  +
+# 79  End (1)
+# 80  Down (2)
+# 81  PgDn (3)
+# 82  Ins
+# 83  Del
+
