@@ -4,7 +4,7 @@ import random
 class Config():
     def __init__(self):
         self.config = configparser.ConfigParser()
-        self.window_name = self.get_random_window_name()
+        #self.window_name = self.get_random_window_name()
         self.Read(verbose=False)
     
     def Read(self, verbose=False):
@@ -33,7 +33,7 @@ class Config():
 
         # Capture Methods]
         self.capture_methods = self.config["Capture Methods"]
-        self.fps_control = int(self.capture_methods["fps_control"])
+        self.fps_control = self.capture_methods.getboolean("fps_control")
         self.capture_fps = int(self.capture_methods["capture_fps"])
         self.Bettercam_capture = self.capture_methods.getboolean("Bettercam_capture")
         self.bettercam_monitor_id = int(self.capture_methods["bettercam_monitor_id"])

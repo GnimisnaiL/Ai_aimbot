@@ -78,9 +78,10 @@ class Capture(threading.Thread):
         while self.running:
             frame = self.capture_frame()
             if frame is not None:
-                if self.frame_queue.full():
-                    self.frame_queue.get()
-                self.frame_queue.put(frame)
+                #if self.frame_queue.full():
+                #    self.frame_queue.get()
+                #self.frame_queue.put(frame)
+                self.latest_frame = frame  # 使用原子赋值替代 Queue
 
             
     def capture_frame(self):
@@ -125,10 +126,11 @@ class Capture(threading.Thread):
             return img[:, :, :3].copy()  # 直接切掉第四个通道 (Alpha)，速度极快
             
     def get_new_frame(self):
-        try:
-            return self.frame_queue.get(timeout=1)
-        except queue.Empty:
-            return None
+        #try:
+        #    return self.frame_queue.get(timeout=1)
+        #except queue.Empty:
+        #    return None
+        return getattr(self, 'latest_frame', None) # 极其快速，无等待
 
     def restart(self):
         if cfg.Bettercam_capture:
@@ -161,5 +163,9 @@ class Capture(threading.Thread):
             self.obs_camera.release()
         self.join()
 
+
+
+print("创建截图实例")
 capture = Capture()
+print("启动截图线程")
 capture.start()
