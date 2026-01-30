@@ -12,25 +12,21 @@ from utils.virtual_gamepad import VirtualGamepad
 
 class MacroController:
     def __init__(self,mouse_driver):
-        """
-        初始化控制器
-        """
+
         self.mouse_driver=mouse_driver
 
-        #初始化 Razer 鼠标
+        #初始化Razer鼠标
         dll_path =  str("./utils/rzctl.dll")  # 确保路径正确
-
         if not os.path.exists(dll_path):
             print(f"错误：雷蛇dll文件不存在 - {dll_path}")
-
         self.rzr = RZCONTROL(dll_path)
-
         if not self.rzr.init():  # 检查是否初始化成功
             print("错误：无法初始化 Razer 鼠标控制！")
-
+        #初始化logic鼠标
         if self.mouse_driver==1:
             mouse_open() #打开罗技鼠标设备
             print("罗技鼠标控制已初始化")
+        #初始化手柄鼠标
         elif self.mouse_driver==2:
             self.virtual_gamepad=VirtualGamepad()
 
@@ -45,8 +41,8 @@ class MacroController:
 
     # 鼠标移动控制器
     def mouse_driver_move(self,x,y):
-        if abs(round(x))<2 and abs(round(y))<2:
-            return
+        #if abs(round(x))<2 and abs(round(y))<2:
+        #    return
         if self.mouse_driver==0:
             self.rzr.mouse_move(round(x),round(y),True)
         elif self.mouse_driver==1:
@@ -69,20 +65,13 @@ class MacroController:
             'f3': 0,
             'f5': 0,
             'f6': 0,
-            'f7':  0,
-            'f9':  0,
+            'f7': 0,
+            'f9': 0,
             'f10': 0,
             'f11': 0,
             'f12': 0,
-            'up': 0,
-            'down': 0,
-            'left': 0,
-            'right': 0,
-            'prior': 0,
-            'next': 0,
             'alt': 0,
             'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
-            'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0,
             'delete': win32api.GetAsyncKeyState(win32con.VK_DELETE) & 0x8000 !=0,
             'lb': win32api.GetAsyncKeyState(win32con.VK_LBUTTON) & 0x8000 != 0,
             'rb': win32api.GetAsyncKeyState(win32con.VK_RBUTTON) & 0x8000 != 0,
@@ -96,7 +85,14 @@ class MacroController:
             '0': 0,
             '9': 0,
             '8': 0,
-            '7': 0
+            '7': 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'insert': 0,
+            'prior': 0,
+            'next': 0
         }
         return keys
     def get_keys_more(self):
@@ -111,12 +107,6 @@ class MacroController:
             'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
             'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
             'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
-            'up': 0,
-            'down': 0,
-            'left': 0,
-            'right': 0,
-            'prior': 0,
-            'next': 0,
             'alt': win32api.GetAsyncKeyState(win32con.VK_MENU) & 0x8000 !=0,
             'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
             'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 != 0,
@@ -133,7 +123,13 @@ class MacroController:
             '0': 0,
             '9': 0,
             '8': 0,
-            '7': 0
+            '7': 0,
+            'up': 0,
+            'down': 0,
+            'left': 0,
+            'right': 0,
+            'prior': 0,
+            'next': 0
 
         }
         return keys
@@ -149,12 +145,6 @@ class MacroController:
             'f10': win32api.GetAsyncKeyState(win32con.VK_F10) & 0x8000 != 0,
             'f11': win32api.GetAsyncKeyState(win32con.VK_F11) & 0x8000 != 0,
             'f12': win32api.GetAsyncKeyState(win32con.VK_F12) & 0x8000 != 0,
-            'up': win32api.GetAsyncKeyState(win32con.VK_UP) & 0x8000 !=0,
-            'down': win32api.GetAsyncKeyState(win32con.VK_DOWN) & 0x8000 !=0,
-            'left': win32api.GetAsyncKeyState(win32con.VK_LEFT) & 0x8000 !=0,
-            'right': win32api.GetAsyncKeyState(win32con.VK_RIGHT) & 0x8000 !=0,
-            'prior': win32api.GetAsyncKeyState(win32con.VK_PRIOR) & 0x8000 !=0,
-            'next': win32api.GetAsyncKeyState(win32con.VK_NEXT) & 0x8000 !=0,
             'alt': win32api.GetAsyncKeyState(win32con.VK_MENU) & 0x8000 !=0,
             'tab': win32api.GetAsyncKeyState(win32con.VK_TAB) & 0x8000 !=0,
             'insert': win32api.GetAsyncKeyState(win32con.VK_INSERT) & 0x8000 !=0,
@@ -171,13 +161,19 @@ class MacroController:
             '0': win32api.GetAsyncKeyState(0x30) & 0x8000 != 0,
             '9': win32api.GetAsyncKeyState(0x39) & 0x8000 != 0,
             '8': win32api.GetAsyncKeyState(0x38) & 0x8000 != 0,
-            '7': win32api.GetAsyncKeyState(0x37) & 0x8000 != 0
+            '7': win32api.GetAsyncKeyState(0x37) & 0x8000 != 0,
+            'up': win32api.GetAsyncKeyState(win32con.VK_UP) & 0x8000 !=0,
+            'down': win32api.GetAsyncKeyState(win32con.VK_DOWN) & 0x8000 !=0,
+            'left': win32api.GetAsyncKeyState(win32con.VK_LEFT) & 0x8000 !=0,
+            'right': win32api.GetAsyncKeyState(win32con.VK_RIGHT) & 0x8000 !=0,
+            'prior': win32api.GetAsyncKeyState(win32con.VK_PRIOR) & 0x8000 !=0,
+            'next': win32api.GetAsyncKeyState(win32con.VK_NEXT) & 0x8000 !=0
         }
         return keys
 
     # 自动扳机触发函数 按键J
     def trigger_key(self):
-        self.rzr.keyboard_input(36, 0)
+        self.rzr.keyboard_input(36, 0) #J
         time.sleep(0.001)
         self.rzr.keyboard_input(36, 1)
 
@@ -377,10 +373,10 @@ class MacroController:
         time.sleep(0.1)
         self.rzr.keyboard_input(33, 1)
 
-    # 蜘蛛侠 c
+    # 蜘蛛侠 C
     def spiderman_C_macro(self):
         self.rzr.keyboard_input(46, 0) #C
-        self.high_precision_sleep(0.01)
+        time.sleep(0.1)
         self.rzr.keyboard_input(46, 1)
 
 
@@ -397,34 +393,34 @@ class MacroController:
         self.rzr.keyboard_input(62, 1)
 
     # RTSS限制帧数 alt+8
-    def rtss_set_framerate_to_80(self):
-        self.rzr.keyboard_input(56, 0)
-        self.rzr.keyboard_input(9, 0)
-        time.sleep(1)
-        self.rzr.keyboard_input(56, 1)
-        self.rzr.keyboard_input(9, 1)
+    # def rtss_set_framerate_to_80(self):
+    #     self.rzr.keyboard_input(56, 0)
+    #     self.rzr.keyboard_input(9, 0)
+    #     time.sleep(1)
+    #     self.rzr.keyboard_input(56, 1)
+    #     self.rzr.keyboard_input(9, 1)
 
     # RTSS接触限制帧数 alt+0
-    def rtss_set_framerate_to_100(self):
-        self.rzr.keyboard_input(56, 0)
-        self.rzr.keyboard_input(11, 0)
-        time.sleep(1)
-        self.rzr.keyboard_input(56, 1)
-        self.rzr.keyboard_input(11, 1)
+    # def rtss_set_framerate_to_100(self):
+    #     self.rzr.keyboard_input(56, 0)
+    #     self.rzr.keyboard_input(11, 0)
+    #     time.sleep(1)
+    #     self.rzr.keyboard_input(56, 1)
+    #     self.rzr.keyboard_input(11, 1)
 
     # RTSS接触限制帧数 alt+F8
-    def rtss_set_framerate_to_0(self):
-        self.rzr.keyboard_input(56, 0)
-        self.rzr.keyboard_input(66, 0)
-        time.sleep(1)
-        self.rzr.keyboard_input(56, 1)
-        self.rzr.keyboard_input(66, 1)
+    # def rtss_set_framerate_to_0(self):
+    #     self.rzr.keyboard_input(56, 0)
+    #     self.rzr.keyboard_input(66, 0)
+    #     time.sleep(1)
+    #     self.rzr.keyboard_input(56, 1)
+    #     self.rzr.keyboard_input(66, 1)
 
     # cd提示
-    def notice_cd(self):
-        self.rzr.keyboard_input(4, 0) #3
-        time.sleep(0.01)
-        self.rzr.keyboard_input(4, 1)
+    # def notice_cd(self):
+    #     self.rzr.keyboard_input(4, 0) #3
+    #     time.sleep(0.01)
+    #     self.rzr.keyboard_input(4, 1)
 
     # 开门
     def strange_opendoor(self):
@@ -433,11 +429,20 @@ class MacroController:
         self.rzr.keyboard_input(38, 1)
 
     # 毒液
-    def venom_utl(self):
-        self.rzr.keyboard_input(16, 0) #Q
-        time.sleep(0.03) 
-        self.rzr.keyboard_input(16, 1)
-        time.sleep(0.6)
+    # def venom_utl_L(self):
+    #     self.rzr.keyboard_input(16, 0) #Q
+    #     time.sleep(0.03) 
+    #     self.rzr.keyboard_input(16, 1)
+    #     time.sleep(0.6)
+    #     self.rzr.keyboard_input(38, 0) #L
+    #     time.sleep(0.1) 
+    #     self.rzr.keyboard_input(38, 1)
+    #     time.sleep(0.1)
+    #     self.rzr.keyboard_input(38, 0) #L
+    #     time.sleep(0.1) 
+    #     self.rzr.keyboard_input(38, 1)
+    # 毒液
+    def venom_L(self):
         self.rzr.keyboard_input(38, 0) #L
         time.sleep(0.1) 
         self.rzr.keyboard_input(38, 1)
@@ -445,6 +450,7 @@ class MacroController:
         self.rzr.keyboard_input(38, 0) #L
         time.sleep(0.1) 
         self.rzr.keyboard_input(38, 1)
+
     # 毒液
     def venom_health(self):
         self.rzr.keyboard_input(46, 0) #C
@@ -452,10 +458,10 @@ class MacroController:
         self.rzr.keyboard_input(46, 1)
 
      # 毒液开大提示
-    def venom_notice(self):
-        self.rzr.keyboard_input(5, 0) #4
-        time.sleep(0.01) 
-        self.rzr.keyboard_input(5, 1)
+    # def venom_notice(self):
+    #     self.rzr.keyboard_input(5, 0) #4
+    #     time.sleep(0.01) 
+    #     self.rzr.keyboard_input(5, 1)
 
     #按下I
     def press_I(self):
@@ -463,8 +469,8 @@ class MacroController:
         time.sleep(1)
 
     #放开I
-    def release_I(self):
-        self.rzr.keyboard_input(23, 1) #I
+    # def release_I(self):
+    #     self.rzr.keyboard_input(23, 1) #I
 
     def phoenix_J_macro(self):
         self.rzr.keyboard_input(36, 0) #J
@@ -481,7 +487,28 @@ class MacroController:
         time.sleep(0.01) 
         self.rzr.keyboard_input(50, 1)
 
-
+    def deadpool_upgrade_macro(self):
+        self.rzr.keyboard_input(3, 0) #2
+        time.sleep(0.001)
+        self.rzr.keyboard_input(4, 0) #3
+        time.sleep(0.001)
+        self.rzr.keyboard_input(5, 0) #4
+        time.sleep(0.001)
+        self.rzr.keyboard_input(8, 0) #7
+        time.sleep(0.001)
+        self.rzr.keyboard_input(9, 0) #8
+        time.sleep(0.001)
+        self.rzr.keyboard_input(10, 0) #9
+        time.sleep(0.001)
+        self.rzr.keyboard_input(11, 0) #0
+        time.sleep(0.001)
+        self.rzr.keyboard_input(3, 1)
+        self.rzr.keyboard_input(4, 1)
+        self.rzr.keyboard_input(5, 1)
+        self.rzr.keyboard_input(8, 1)
+        self.rzr.keyboard_input(9, 1)
+        self.rzr.keyboard_input(10, 1)
+        self.rzr.keyboard_input(11, 1)
 
 # Scancode    Keyboard Key
 # 1   ESC
