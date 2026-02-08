@@ -41,7 +41,7 @@ class ModeContext:
         self.test_aim = False #测试
         
         self.dist_fix = True #距离补偿
-        self.dist_standard_speed = 3.9 #标准距离单位速度
+        self.dist_standard_speed = 3.92 #标准距离单位速度
         self.move_fix = True #移动补偿
         self.move_time_threshold = 0.13 #移动补偿启动时间
         self.last_move_direction = 0 #记录上一次移动方向
@@ -113,53 +113,135 @@ class ModeManager:
 
         self.mode_config={
             '灵蝶':
-                    {'name':"灵蝶",'id':1,   'fire':1, 'Px':cfg.Px, 'Py':0.14,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6],      'smooth':0, 'headshot':False,'headshot_dist':8, 'headshot_pos':0.25,'move_fix_adjust':1},
+                    {'name':"灵蝶",'id':1,   'fire':1, 'Px':cfg.Px, 'Py':0.14,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,0],      'smooth':0, 'headshot':False,'headshot_dist':8, 'headshot_pos':0.25,'move_fix_adjust':1},
             '灵蝶隐身':
-                    {'name':"灵蝶",'id':1.5, 'fire':0, 'Px':cfg.Px, 'Py':0.14,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-2.5,2.5,-4,4],  'smooth':0, 'headshot':False,'headshot_dist':8, 'headshot_pos':0.25,'move_fix_adjust':1},
+                    {'name':"灵蝶",'id':1.5, 'fire':0, 'Px':cfg.Px, 'Py':0.14,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-3,3,-6,6,0],      'smooth':0, 'headshot':False,'headshot_dist':8, 'headshot_pos':0.25,'move_fix_adjust':1},
 
             "鹰眼":
-                    {'name':"鹰眼",'id':11,  'fire':11,'Px':cfg.Px, 'Py':0.35,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':0, 'headshot':True, 'headshot_dist':12,'headshot_pos':0.2, 'move_fix_adjust':0.85},
+                    {'name':"鹰眼",'id':11,  'fire':11,'Px':cfg.Px, 'Py':0.35,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,0],      'smooth':0, 'headshot':True, 'headshot_dist':12,'headshot_pos':0.2, 'move_fix_adjust':0.85},
             "鹰眼连射":
-                    {'name':"鹰眼",'id':11.5,'fire':11,'Px':cfg.Px, 'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':0.95},
+                    {'name':"鹰眼",'id':11.5,'fire':11,'Px':cfg.Px, 'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,0],      'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':0.95},
 
             "默认":
-                    {'name':"默认",'id':2,   'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-7,7],      'smooth':0, 'headshot':False,'headshot_dist':13,'headshot_pos':0.37,'move_fix_adjust':1},
+                    {'name':"默认",'id':2,   'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':False,'headshot_dist':15,'headshot_pos':0.37,'move_fix_adjust':1},
             "暴力":
-                    {'name':"暴力",'id':22,  'fire':2, 'Px':cfg.Px, 'Py':0.37,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0.37,'move_fix_adjust':1},
+                    {'name':"暴力",'id':22,  'fire':2, 'Px':cfg.Px, 'Py':0.37,  'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0.37,'move_fix_adjust':1},
 
             "凤凰":
-                    {'name':"凤凰",'id':3,   'fire':2, 'Px':cfg.Px, 'Py':0.1,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':2, 'headshot':True, 'headshot_dist':13,'headshot_pos':0.4, 'move_fix_adjust':1},
+                    {'name':"凤凰",'id':3,   'fire':2, 'Px':cfg.Px, 'Py':0.1,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,0],      'smooth':1, 'headshot':True, 'headshot_dist':13,'headshot_pos':0.4, 'move_fix_adjust':1},
             "飞天":
-                    {'name':"飞天",'id':13,  'fire':2, 'Px':0,      'Py':0.1,   'Sx':cfg.Sx*1.1,'Sy':cfg.Sy*1.1,'lrud':[-4,4,-4,4],      'smooth':2, 'headshot':False,'headshot_dist':-9,'headshot_pos':0.1, 'move_fix_adjust':1},
+                    {'name':"飞天",'id':13,  'fire':2, 'Px':cfg.Px, 'Py':0.14,  'Sx':cfg.Sx*1.1,'Sy':cfg.Sy*1.1,'lrud':[-4,4,-5,4,0],      'smooth':1, 'headshot':False,'headshot_dist':-9,'headshot_pos':0.1, 'move_fix_adjust':1},
 
-            "铁拳":
-                    {'name':"铁拳",'id':5,   'fire':5, 'Px':0,      'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-6,6,-7,7],      'smooth':0, 'headshot':True, 'headshot_dist':8, 'headshot_pos':0.2, 'move_fix_adjust':1},
+            
             "奇异":
-                    {'name':"奇异",'id':15,  'fire':-1,'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':1},                    
+                    {'name':"奇异",'id':15,  'fire':-1,'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,0],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':1},                    
             "寡妇":
-                    {'name':"寡妇",'id':25,  'fire':25,'Px':0,      'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-3,3,-5,3],      'smooth':2, 'headshot':False,'headshot_dist':-9,'headshot_pos':0.4, 'move_fix_adjust':0.6},
+                    {'name':"寡妇",'id':25,  'fire':25,'Px':0,      'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-3,3,-5,3,0],      'smooth':1, 'headshot':False,'headshot_dist':-9,'headshot_pos':0.4, 'move_fix_adjust':0.6},
 
             "夜魔":
-                    {'name':"夜魔",'id':6,   'fire':6, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-5,5,-7,7],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0.3, 'move_fix_adjust':1},
+                    {'name':"夜魔",'id':6,   'fire':6, 'Px':0.1,    'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':False,'headshot_dist':4, 'headshot_pos':0.3, 'move_fix_adjust':1},
+            "铁拳":
+                    {'name':"铁拳",'id':16,  'fire':16,'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':True, 'headshot_dist':4, 'headshot_pos':0.35, 'move_fix_adjust':1},
+            "金刚":
+                    {'name':"金刚",'id':26,  'fire':26,'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':False,'headshot_dist':4, 'headshot_pos':0.3, 'move_fix_adjust':1},
 
             "奶妈":
-                    {'name':"奶妈",'id':17,  'fire':1, 'Px':0,      'Py':55,    'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-0.7,0.7,-1,0.8],'smooth':2, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':0},
+                    {'name':"奶妈",'id':17,  'fire':1, 'Px':0,      'Py':55,    'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-0.7,0.7,-1,0.8,0],'smooth':1, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':0},
             "奶妈锁敌":
-                    {'name':"奶妈",'id':17.5,'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4],      'smooth':2, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':1},
+                    {'name':"奶妈",'id':17.5,'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,0],      'smooth':1, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':1},
             '测试':
-                    {'name':"测试",'id':27,  'fire':2, 'Px':0,      'Py':0,     'Sx':4,         'Sy':4,         'lrud':[-99,99,-99,99],  'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':0},
+                    {'name':"测试",'id':27,  'fire':2, 'Px':0,      'Py':0,     'Sx':4,         'Sy':4,         'lrud':[-99,99,-99,99,0],  'smooth':0, 'headshot':False,'headshot_dist':0, 'headshot_pos':0,   'move_fix_adjust':0},
 
             "蜘蛛":
-                    {'name':"蜘蛛",'id':9,   'fire':9, 'Px':0.1,    'Py':0.2,   'Sx':cfg.Sx/2,  'Sy':cfg.Sy/2,'lrud':[-3.5,3.5,-3.5,3.5],'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':2},
+                    {'name':"蜘蛛",'id':9,   'fire':9, 'Px':0.1,    'Py':0.14,  'Sx':cfg.Sx/1.5,'Sy':cfg.Sy/1.5,'lrud':[-3,3,-3,3,0],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':1.5},
             "蜘蛛近战":
-                    {'name':"蜘蛛",'id':9.5, 'fire':9, 'Px':0.1,    'Py':0,     'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-5,5,-7,7],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':1},
+                    {'name':"蜘蛛",'id':9.5, 'fire':9, 'Px':0.1,    'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,1],      'smooth':0, 'headshot':False,'headshot_dist':-9,'headshot_pos':0,   'move_fix_adjust':1},
             "毒液":
-                    {'name':"毒液",'id':19,  'fire':19,'Px':0,      'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-6,6,-10,10],    'smooth':0, 'headshot':True, 'headshot_dist':4, 'headshot_pos':0.2, 'move_fix_adjust':1},
-                    #距离超过30的敌人不锁
+                    {'name':"毒液",'id':19,  'fire':19,'Px':0,      'Py':0.4,   'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,6,1],      'smooth':0, 'headshot':True, 'headshot_dist':6, 'headshot_pos':0.2, 'move_fix_adjust':1},
+                    
             "死侍":
-                    {'name':"死侍",'id':10,  'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-7,7],      'smooth':0, 'headshot':True, 'headshot_dist':15,'headshot_pos':0.37,'move_fix_adjust':1}
+                    {'name':"死侍",'id':10,  'fire':2, 'Px':cfg.Px, 'Py':cfg.Py,'Sx':cfg.Sx,    'Sy':cfg.Sy,    'lrud':[-4,4,-6,4,1],      'smooth':0, 'headshot':True, 'headshot_dist':15,'headshot_pos':0.37,'move_fix_adjust':1}
             
         }
+
+    #根据按键获取模式配置
+    def get_mode_config(self, keys):
+        config=None
+        
+        if keys['f1']:
+            config = self.mode_config.get('灵蝶').copy()
+        if keys['x1'] and keys['f1']:
+            config = self.mode_config.get('鹰眼').copy()
+        if keys['f2']:
+            config = self.mode_config.get('默认').copy()
+        if keys['x2'] and keys['f2']:
+            config = self.mode_config.get('暴力').copy()
+        if keys['f3']:
+            config = self.mode_config.get('凤凰').copy()
+        if keys['x1'] and keys['f3']:
+            config = self.mode_config.get('飞天').copy()
+
+        if keys['x1'] and keys['f5']:
+            config = self.mode_config.get('奇异').copy()
+        if keys['x2'] and keys['f5']:
+            config = self.mode_config.get('寡妇').copy()
+
+        if keys['f6']:
+            config = self.mode_config.get('夜魔').copy()
+        if keys['x1'] and keys['f6']:
+            config = self.mode_config.get('铁拳').copy()
+        if keys['x2'] and keys['f6']:
+            config = self.mode_config.get('金刚').copy()
+
+        if keys['x1'] and keys['f7']:
+            config = self.mode_config.get('奶妈').copy()
+        if keys['x2'] and keys['f7']:
+            config = self.mode_config.get('测试').copy()
+        if keys['f9']:
+            config = self.mode_config.get('蜘蛛').copy()
+        if keys['x1'] and keys['f9']:
+            config = self.mode_config.get('毒液').copy()
+        if keys['f10']:
+            config = self.mode_config.get('死侍').copy()
+
+
+        #打印信息
+        if config is not None:
+            print(f"{config['name']} ({config['Px']}-{config['Py']}-{config['headshot_pos']}) ({config['lrud'][0]},{config['lrud'][1]},{config['lrud'][2]},{config['lrud'][3]},{config['lrud'][4]}) 爆头距离:{config['headshot_dist']}")
+
+        return config
+
+    #根据瞄准配置获取瞄准状态
+    def get_aim_status(self, fire, keys):
+
+        if fire==-1:
+            aiming=0
+        elif fire==0:
+            aiming=keys['shift']==0
+        elif fire==1:
+            aiming=(keys['lb'] or keys['x1']) and keys['shift']==0
+        elif fire==11:
+            aiming=(keys['lb'] or keys['rb']) and keys['x1']==0
+        elif fire==2:
+            aiming=keys['x1']
+        elif fire==25:
+            aiming=(keys['x2'] or keys['rb'] or keys['lb']) and keys['mb']==0 and keys['shift']==0
+
+        elif fire==6:
+            aiming=keys['x1'] or keys['x2']
+        elif fire==16:
+            aiming=keys['x1'] 
+        elif fire==26:
+            aiming=keys['lb'] and keys['ctrl']==0
+
+        elif fire==9:
+            aiming=keys['shift']==0
+        elif fire==19:
+            aiming=keys['x1'] and keys['shift']==0 and keys['ctrl']==0
+        else:
+            aiming=0
+            print("错误:无效的瞄准配置")
+        return aiming
 
     #可信度过滤
     def confidence_filter(self, score, mode):
@@ -174,10 +256,8 @@ class ModeManager:
             #隐身自瞄常开
             if mode['id']==1 and keys['mb']: #隐身模式
                 mode=self.mode_config.get('灵蝶隐身').copy()
-                context.reset(now)
             if mode['id']==1.5 and (keys['lb'] or keys['x1']): #短枪模式
                 mode=self.mode_config.get('灵蝶').copy()
-                context.reset(now)
 
 
         if mode['name']=='鹰眼':
@@ -197,13 +277,6 @@ class ModeManager:
             if toggled is True:
                 executor.submit(macro_ctl.phoenix_J_macro) #凤凰女中键跳一下
                 print("J")
-
-        if mode['name']=='黑豹':
-            if keys['mb']:
-                if now-context.last_mb_time>0.1:
-                    executor.submit(macro_ctl.blackpanther_M_macro)
-                    print("M")
-                    context.last_mb_time=now
 
         if mode['name']=='夜魔':
             #夜魔侠格挡前防止卡住
@@ -234,10 +307,10 @@ class ModeManager:
 
         if mode['name']=='蜘蛛':
             #蜘蛛侠按左键就切换近战模式 瞄准速度提升
-            if mode['id']==9 and (keys['lb'] or keys['mb'] or keys['ctrl']):
+            if mode['id']==9 and (keys['lb'] or keys['mb']):
                 mode=self.mode_config.get('蜘蛛近战').copy()
                 context.reset(now)
-            if mode['id']==9.5 and (keys['lb']==0 and keys['mb']==0 and keys['ctrl']==0):
+            if mode['id']==9.5 and (keys['lb']==0 and keys['mb']==0):
                 mode=self.mode_config.get('蜘蛛').copy()
                 context.reset(now)
 
@@ -274,12 +347,12 @@ class ModeManager:
             if context.spiderman2_key==1 and keys['x1']==0:
                 context.spiderman2_key=0
 
-            #蜘蛛侠连招3 侧键2
-            if context.spiderman3_key==0 and keys['x2']: 
-                context.spiderman3_key=1
-                executor.submit(macro_ctl.spiderman_JF_macro)
-            if context.spiderman3_key==1 and keys['x2']==0:
-                context.spiderman3_key=0
+            # #蜘蛛侠连招3 侧键2
+            # if context.spiderman3_key==0 and keys['x2']: 
+            #     context.spiderman3_key=1
+            #     executor.submit(macro_ctl.spiderman_JF_macro)
+            # if context.spiderman3_key==1 and keys['x2']==0:
+            #     context.spiderman3_key=0
 
 
             #蜘蛛侠锁敌
@@ -314,6 +387,106 @@ class ModeManager:
 
         return mode
         
+
+    #判断目标是否符合资格
+    def target_qualify(self, mode, xywhd, model_x, model_y):
+        if xywhd[3]>0.97*model_y: #防止锁大树
+            return True
+        if mode['id']==9.5: #蜘蛛侠近战 目标太小 忽略
+            if xywhd[4]>15:
+                return True
+        return False
+
+    #计算目标优先级
+    def get_target_priority(self, mode, xywhd, model_x, model_y):
+        if mode['id']==17:#奶妈特调
+            target_priority=(xywhd[0]-model_x/2)**2 + (xywhd[1]+55-model_y/2)**2
+        elif mode['name']=='金刚':#金刚特调
+            target_priority=xywhd[4]
+        else:
+            target_priority=(xywhd[0]+(mode['Px']*xywhd[2])-model_x/2)**2 + (xywhd[1]-(mode['Py']*xywhd[3])-model_y/2)**2
+
+        return target_priority
+
+    #获取特殊偏移x
+    def get_special_Px(self, mode, keys, shift_Px):
+        special_Px=shift_Px
+
+
+        return special_Px
+
+    #根据距离调整x
+    def change_Px_by_dist(self, mode, dist):
+        if mode['name']=='铁拳' or mode['name']=='金刚':
+            if dist<=4:
+                return 0.2
+            elif dist>=7:
+                return mode['Px']
+            else:
+                # 线性插值
+                ratio = (dist - 3) / 3
+                return 0.2 - ratio * (0.2 - mode['Px'])
+
+        else:
+            return mode['Px'] 
+
+
+    #获取特殊偏移y
+    def get_special_Py(self, mode, keys, shift_Py):
+        special_Py=shift_Py
+
+        if mode['name']=='鹰眼' and keys['shift']: #鹰眼锁身体
+            special_Py=0.44
+        if mode['name']=='默认' and keys['rb']: #星爵右键
+            special_Py=0.2
+        if mode['name']=='默认' and keys['shift']: #海拉锁头
+            special_Py=0.37
+        if mode['name']=='默认' and keys['mb']: #海拉中键
+            special_Py=0.2
+        if mode['name']=='凤凰' and keys['shift']: #凤凰锁头
+            special_Py=0.4
+        if mode['name']=='凤凰' and keys['mb']: #凤凰砸地
+            special_Py=-0.6
+        if mode['name']=='寡妇' and keys['lb']: #黑寡妇左键
+            special_Py=0.4
+#        if mode['name']=='毒液' and keys['mb']: #毒液中键
+#            special_Py=0.15
+        if mode['name']=='暴力' and (keys['rb'] or keys['mb'] or keys['shift']): # 暴力锁头 右键按下时瞄准中间 海拉默认右键 
+            special_Py=0.2 
+        if mode['name']=='死侍' and keys['shift']:  
+            special_Py=0.4 
+
+        return special_Py
+
+    #根据目标信息判断是否允许移动
+    def is_movable(self, keys, mode, final_x, final_y, target):
+        allow=False
+
+        lrud=mode['lrud']
+
+        #计算系数
+        factorX=final_x/(target[2]/2)
+        factorY=final_y/(target[2]/2)
+
+        if mode['name']=='凤凰' and keys['mb']: #凤凰模式
+            if lrud[0]<factorX<lrud[1] and abs(factorY)<10:
+                allow=True
+
+        if mode['name']=='寡妇' and (keys['lb'] and not keys['rb']): #黑寡妇
+            if abs(factorX)<10 and abs(factorY)<10:
+                    allow=True
+
+        if lrud[4]:
+            if target[4]<6.5:
+                allow=True
+
+        
+        if lrud[0]<factorX<lrud[1] and lrud[2]<factorY<lrud[3]:
+            allow=True
+
+        
+        return allow
+
     #执行特殊功能操作
     def special_action(self, now, mode, keys, context, executor, macro_ctl):
         if mode['name']=='奇异':
@@ -400,11 +573,6 @@ class ModeManager:
             time.sleep(0.1)
             return True
 
-        #ai速率控制
-        if context.fps_control:
-            if now - context.last_capture_time < context.frame_interval: #还没到下一帧的时间
-                return True 
-            context.last_capture_time = now
           
         #获取模型训练图片
         if context.get_train_pic: 
@@ -414,6 +582,8 @@ class ModeManager:
                     context.last_get_picture_time=now    
         return False
    
+
+
     #debug
     def debug_action(self, mode, keys, context, model_x, model_y):
         #显示线程
@@ -446,13 +616,13 @@ class ModeManager:
             #mode['move_fix_adjust']=change_value("移动补偿修正",mode['move_fix_adjust'],-0.01)
             mode['Px']=change_value("x偏移",mode['Px'],-0.01)
         if keys['next']:
-            #mode['Sx']=change_value("速度x",mode['Sx'],0.01)
-            #mode['Sy']=change_value("速度y",mode['Sy'],0.01,False)
-            mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],0.5)
+            mode['Sx']=change_value("速度x",mode['Sx'],-0.01)
+            mode['Sy']=change_value("速度y",mode['Sy'],-0.01,False)
+            #mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],0.5)
         if keys['prior']:
-            #mode['Sx']=change_value("速度x",mode['Sx'],-0.01)
-            #mode['Sy']=change_value("速度y",mode['Sy'],-0.01,False)
-            mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],-0.5)
+            mode['Sx']=change_value("速度x",mode['Sx'],0.01)
+            mode['Sy']=change_value("速度y",mode['Sy'],0.01,False)
+            #mode['headshot_dist']=change_value("爆头距离",mode['headshot_dist'],-0.5)
         
         #移动补偿
         context.key_0, toggled = key_toggle(context.key_0, keys['0'])
@@ -489,133 +659,4 @@ class ModeManager:
                 print("开启获取截图")
             else:
                 print("关闭获取截图")
-
-    #根据按键获取模式配置
-    def get_mode_config(self, keys):
-        config=None
-        
-        if keys['f1']:
-            config = self.mode_config.get('灵蝶').copy()
-        if keys['x1'] and keys['f1']:
-            config = self.mode_config.get('鹰眼').copy()
-        if keys['f2']:
-            config = self.mode_config.get('默认').copy()
-        if keys['x2'] and keys['f2']:
-            config = self.mode_config.get('暴力').copy()
-        if keys['f3']:
-            config = self.mode_config.get('凤凰').copy()
-        if keys['x1'] and keys['f3']:
-            config = self.mode_config.get('飞天').copy()
-        if keys['f5']:
-            config = self.mode_config.get('铁拳').copy()
-        if keys['x1'] and keys['f5']:
-            config = self.mode_config.get('奇异').copy()
-        if keys['x2'] and keys['f5']:
-            config = self.mode_config.get('寡妇').copy()
-        if keys['f6']:
-            config = self.mode_config.get('夜魔').copy()
-        if keys['x1'] and keys['f7']:
-            config = self.mode_config.get('奶妈').copy()
-        if keys['x2'] and keys['f7']:
-            config = self.mode_config.get('测试').copy()
-        if keys['f9']:
-            config = self.mode_config.get('蜘蛛').copy()
-        if keys['x1'] and keys['f9']:
-            config = self.mode_config.get('毒液').copy()
-        if keys['f10']:
-            config = self.mode_config.get('死侍').copy()
-
-
-        #打印信息
-        if config is not None:
-            print(f"{config['name']} 坐标:({config['Px']*100:.0f}%,{(config['Py']*100):.0f}%) 范围:({config['lrud'][0]},{config['lrud'][1]},{config['lrud'][2]},{config['lrud'][3]}) 爆头距离:{config['headshot_dist']} 爆头位置:{config['headshot_pos']}")
-        return config
-
-    #根据瞄准配置获取瞄准状态
-    def get_aim_status(self, fire, keys):
-
-        if fire==-1:
-            aiming=0
-        elif fire==0:
-            aiming=keys['shift']==0
-        elif fire==1:
-            aiming=(keys['lb'] or keys['x1']) and keys['shift']==0
-        elif fire==11:
-            aiming=(keys['lb'] or keys['rb']) and keys['x1']==0
-        elif fire==2:
-            aiming=keys['x1']
-        elif fire==5:
-            aiming=keys['x1'] and keys['ctrl']==0
-        elif fire==25:
-            aiming=(keys['x2'] or keys['rb'] or keys['lb']) and keys['mb']==0 and keys['shift']==0
-        elif fire==6:
-            aiming=keys['x1'] or keys['x2']
-        elif fire==9:
-            aiming=keys['shift']==0
-        elif fire==19:
-            aiming=keys['x1'] and keys['shift']==0 and keys['ctrl']==0
-        else:
-            aiming=0
-            print("错误:无效的瞄准配置")
-
-        return aiming
-
-    #判断目标是否符合
-    def target_qualify(self, mode, xywhd, model_x, model_y):
-        if xywhd[3]>0.97*model_y: #防止锁大树
-            return True
-        elif mode['name']=='毒液':#跳过远距离的敌人
-            if xywhd[4]>30:
-                return True
-        elif mode['id']==9.5: #蜘蛛侠近战 目标太小 忽略
-            if xywhd[4]>15:
-                return True
-        return False
-
-    #获取特殊偏移
-    def get_special_Py(self, mode, keys, shift_Py):
-        special_Py=shift_Py
-
-        if mode['name']=='鹰眼' and keys['shift']: #鹰眼锁身体
-            special_Py=0.44
-        if mode['name']=='默认' and keys['rb']: #星爵右键
-            special_Py=0.2
-        if mode['name']=='默认' and keys['shift']: #海拉锁头
-            special_Py=0.37
-        if mode['name']=='默认' and keys['mb']: #海拉中键
-            special_Py=0.2
-        if mode['name']=='凤凰' and keys['shift']: #凤凰锁头
-            special_Py=0.4
-        if mode['name']=='凤凰' and keys['mb']: #凤凰砸地
-            special_Py=-0.6
-        if mode['name']=='寡妇' and keys['lb']: #黑寡妇左键
-            special_Py=0.4
-        if mode['name']=='毒液' and keys['mb']: #毒液中键
-            special_Py=0.15
-        if mode['name']=='暴力' and (keys['rb'] or keys['mb'] or keys['shift']): # 暴力锁头 右键按下时瞄准中间 海拉默认右键 
-            special_Py=0.2 
-        if mode['name']=='死侍' and keys['shift']:  
-            special_Py=0.4 
-
-        return special_Py
-
-    #根据目标信息判断是否允许移动
-    def is_movable(self, keys, mode, factorX, factorY):
-        allow=False
-
-        lrud=mode['lrud']
-
-        if mode['name']=='凤凰' and keys['mb']: #凤凰模式
-            if lrud[0]<factorX<lrud[1] and abs(factorY)<10:
-                allow=True
-
-        elif mode['name']=='寡妇' and (keys['lb'] and not keys['rb']): #黑寡妇
-            if abs(factorX)<10 and abs(factorY)<10:
-                    allow=True
-        else:
-            if lrud[0]<factorX<lrud[1] and lrud[2]<factorY<lrud[3]:
-                allow=True
-
-        return allow
-
 

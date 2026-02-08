@@ -1,6 +1,9 @@
 # Visual Studio files
 .vs/
+_pycache_/
 build/
 cpp/
+dist/
+venv_pack/
 model/
-_pycache_
+12.0

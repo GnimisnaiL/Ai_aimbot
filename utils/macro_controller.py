@@ -7,7 +7,7 @@ import win32con
 from utils.rzctl import RZCONTROL
 #罗技控制
 from utils.logitech_mouse import *
-from utils.virtual_gamepad import VirtualGamepad
+#from utils.virtual_gamepad import VirtualGamepad
 
 
 class MacroController:
@@ -41,10 +41,11 @@ class MacroController:
 
     # 鼠标移动控制器
     def mouse_driver_move(self,x,y):
-        #if abs(round(x))<2 and abs(round(y))<2:
-        #    return
+        if abs(round(x))<1 and abs(round(y))<1:
+            return
         if self.mouse_driver==0:
             self.rzr.mouse_move(round(x),round(y),True)
+            #self.rzr.mouse_move(int(x),int(y),True)
         elif self.mouse_driver==1:
             if abs(round(x))>127:
                 print("鼠标行程超标")

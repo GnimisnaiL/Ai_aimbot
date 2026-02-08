@@ -1,3 +1,4 @@
+#main.py
 import cv2
 import time
 import random
@@ -8,12 +9,13 @@ import mss
 from concurrent.futures import ThreadPoolExecutor
 #配置文件
 from utils.config_watcher import cfg
-print('模型初始化')
+print('模型初始化开始')
 #模型初始化
 from utils.utils import Predictor
 print('模型初始化结束')
 #画面预处理
 from utils.utils import letterbox
+from utils.utils import letterbox_fast426
 #画面截图
 from utils.capture import capture
 #宏配置
@@ -70,16 +72,17 @@ def find_target():
     #主循环
     while True:
         #数据统计
-        if time.time()-ctx.last_print_time>=1.0:
+        if time.time()-ctx.last_print_time>=1.0 and mode['id']!=0:
             if ctx.total_frame!=0:
                 avg_infer_delay=round(ctx.total_infer_delay/ctx.total_frame*1000)
             
             print(f"{'挂机中 ' if ctx.afk else ''}"
                   f"{'录制中 ' if ctx.get_train_pic else ''}"
                   f"{'Debug ' if debug else ''}"
-                  f"m{mode['id']} "
-                  f"{'滑' if mode['smooth'] else ''}"
-                  f"{'锁' if mode['headshot'] else ''}"
+                  f"m{mode['id']}{mode['name']} "
+                  f"{'平滑' if mode['smooth'] else ''}"
+                  f"{'爆头' if mode['headshot'] else ''}"
+                  f"{'近吸' if mode['lrud'][4] else ''}"
                   f"{' '}"
                   f"{ctx.total_frame:>3.0f}({avg_infer_delay if ctx.total_frame!=0 else '-'}) "
                   #f"{'延' if ctx.delay_fix else ''}"
@@ -93,7 +96,7 @@ def find_target():
                 print("   对面谁的大招需要提防")
                 print("   自己的大招要怎么开")
                 print("")
-                tip=1
+                ctx.tip+=1
 
             ctx.tip+=1
             ctx.total_frame=0
@@ -107,14 +110,14 @@ def find_target():
             continue 
         else:
             #图像没有变化跳过
-            curr_check=img0.ravel()[89000:93000] #极简对比逻辑：拉平数组取前1000个值
+            curr_check=img0.ravel()[90000:92000] #极简对比逻辑
             if ctx.prev_check is not None and np.array_equal(curr_check, ctx.prev_check): 
                 continue              
-            ctx.prev_check = curr_check.copy()
+            ctx.prev_check=curr_check
 
         #图片开始处理时间
         now=time.time()
-        
+
         #按键检测分频
         if debug:
             keys=macro_ctl.get_keys_all()
@@ -149,18 +152,18 @@ def find_target():
         if ctx.show_view: resized_display=cv2.resize(img0, (int(model_x), int(model_y)))
 
         #图像预处理 缩放后的图像img、缩放比例ratio和填充的像素值dwdh
-        img, ratio, dwdh=letterbox(img0, new_shape=(model_x, model_y)) 
+        #img, ratio, dwdh=letterbox(img0, new_shape=(model_x, model_y))
+        img, ratio, dwdh=letterbox_fast426(img0)
         #奶妈使用另外的模型
         if mode['id']==17:
             data = ally_pred.infer(img)
         else:
             data = enemy_pred.infer(img)
 
-
         #推理延迟过高 弃用  
         infer_delay=time.time()-now
         if infer_delay>ctx.delay_threshold: 
-            print('   延迟太高 丢弃   ')
+            print('延迟太高,丢弃')
             continue
 
         #数据统计
@@ -204,7 +207,7 @@ def find_target():
             final_boxes, final_scores, final_cls_inds = dets[:, :4], dets[:, 4], dets[:, 5]
             #目标处理
             target_xywhd_list = []
-            target_distance_list = []
+            target_priority_list = []
 
             #遍历所有检测目标
             for i in range(len(final_boxes)):
@@ -250,25 +253,21 @@ def find_target():
                     else:
                         cv2.circle(resized_display, (int(xywhd[0]+mode['Px']*xywhd[2]), int(xywhd[1]-mode['Py']*xywhd[3])), 1, (0, 0, 255), -1)
 
-                #目标距离计算
-                if mode['id']==17:#奶妈特调
-                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]+ mode['Py'] - model_y/2)**2
-                else:
-                    target_distance=(xywhd[0] - model_x/2)**2 + (xywhd[1]- (mode['Py'] * xywhd[3])- model_y/2)**2
+                #目标优先级计算
+                target_priority=mode_mgr.get_target_priority(mode,xywhd,model_x,model_y)
 
                 #特殊目标处理 判断是否加入目标队列
                 if mode_mgr.target_qualify(mode,xywhd,model_x,model_y): 
                     continue
 
                 target_xywhd_list.append(xywhd)
-                target_distance_list.append(target_distance)
+                target_priority_list.append(target_priority)
         
         
         #选取最高优先级目标
         if num>0 and target_xywhd_list: 
-            min_index=target_distance_list.index(min(target_distance_list))
+            min_index=target_priority_list.index(min(target_priority_list))
             target=target_xywhd_list[min_index]
-            
 
             #寡妇自动扳机
             if mode['name']=='寡妇':
@@ -298,26 +297,29 @@ def find_target():
                 move_fix_value,ctx.move_time,ctx.last_move_direction=get_move_fix_value(now, keys['a'], keys['d'], target[4], ctx.move_time, ctx.move_time_threshold,ctx.last_move_direction)                                   
                 #根据角色修正
                 move_fix_value*=mode['move_fix_adjust']
-
             else:
                 move_fix_value=0
             
-             
+            #X调整
+            #近身调整x
+            shift_Px=mode_mgr.change_Px_by_dist(mode,target[4])
+            shift_Px=mode_mgr.get_special_Px(mode,keys,shift_Px)
             #最终x向量
-            final_x=move_to(target[0]+mode['Px']*target[2],model_x/2)+move_fix_value
+            final_x=move_to(target[0]+shift_Px*target[2],model_x/2)+move_fix_value
 
-            #Y动态调整
+
+            #Y调整
             #自适应锁头锁头位置
-            shift_Py=get_headshot_position_by_dist(mode['headshot'],target[4],mode['headshot_dist'],mode['headshot_pos'],mode['Py']) 
+            shift_Py=get_headshot_position_by_dist(mode,target[4],mode['Py']) 
+            #如果目标宽比高大 则只锁中心
+            #if target[2]>target[3]:
+            #    shift_Py=0
             #获取特殊Y向量
             shift_Py=mode_mgr.get_special_Py(mode,keys,shift_Py)
             #最终y向量
             final_y=move_to(target[1]-shift_Py*target[3],model_y/2)
 
-            #如果目标宽比高大 则只锁中心
-            if target[2]>target[3]:
-                final_x=move_to(target[0],model_x/2)
-                final_y=move_to(target[1],model_y/2)
+
 
             #奶妈特殊Y向量调整
             if mode['id']==17:
@@ -340,11 +342,6 @@ def find_target():
                 #         final_y=0
                 #         #final_x=0
 
-                
-                
-                #计算系数
-                factorX=final_x/(target[2]/2)
-                factorY=final_y/(target[2]/2)
                             
 
                 # if mode['name']=='测试':
@@ -358,12 +355,14 @@ def find_target():
                 #     else:
                 #         continue
 
-                ##像素值到鼠标移动值 平滑处理
-                move_x,move_y=smooth_poccess(target, final_x, final_y, mode['Sx'], mode['Sy'], delay_factor, dist_factor, mode['smooth'])
+                ##像素值到鼠标移动值,平滑处理
+                move_x,move_y=smooth_poccess(final_x, final_y, target, mode['Sx'], mode['Sy'], delay_factor, dist_factor, mode['smooth'])
 
                 #判断是否允许输入
-                if mode_mgr.is_movable(keys,mode,factorX,factorY):
-                    macro_ctl.mouse_driver_move(move_x,move_y)
+                if mode_mgr.is_movable(keys, mode, final_x, final_y, target):
+                    macro_ctl.mouse_driver_move(move_x, move_y)
+                
+
                 #方式一
                 #距离小于8 不管身位了 也不平滑了
                 #距离8以上 平滑
@@ -376,7 +375,7 @@ def find_target():
 
                 #随距离变化range
 
-
+                # #ai速率控制
                 #print("敌人位置",target[0]-model_x/2,"移动距离",round(move_x))
 
                 
@@ -389,6 +388,7 @@ def find_target():
 
 
          #可视化
+
         if ctx.show_view:
             cv2.putText(resized_display, f"mode:{mode['id']}", (10, 30), cv2.FONT_HERSHEY_SIMPLEX, 0.7, (0, 255, 255), 2)
             ctx.display_thread.update_image(resized_display)

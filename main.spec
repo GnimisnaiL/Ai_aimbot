@@ -1,38 +1,34 @@
 # -*- mode: python ; coding: utf-8 -*-
 from PyInstaller.utils.hooks import collect_submodules, collect_dynamic_libs
 
+block_cipher = None
+
 a = Analysis(
-    ['main.py'],
+    ["main.py"],
     pathex=[],
-    datas=[(r'C:\Users\10648\AppData\Roaming\Python\Python39\site-packages\cuda\**', 'cuda')],
+    datas=[],
+    binaries=[],  # 添加DLL
+    hiddenimports=collect_submodules('cuda.bindings')+['site'], 
     hookspath=[],
-    hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=[], 
     excludes=[],
-    noarchive=False,
-    optimize=0,
-    binaries=collect_dynamic_libs('cuda') +[('utils/rzctl.dll', 'utils'),('C:/Program Files/NVIDIA GPU Computing Toolkit/CUDA/v11.8/bin/*.dll', '.')],  # 添加DLL
-    hiddenimports=collect_submodules('cuda.bindings')+['site'] # ('cuda.bindings')['torch', 'cv2', 'pynput','cuda','cuda.bindings','cuda.bindings._bindings','cuda.bindings.cydriver','cuda.bindings.runtime','cuda.bindings.driver','cuda.bindings._lib','cuda.bindings._lib.utils','cuda.cudart']补充隐式导入
+    win_no_prefer_redirects=False,
+    win_private_assemblies=False,
+    cipher=block_cipher,
 )
-pyz = PYZ(a.pure)
+
+pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
 exe = EXE(
     pyz,
     a.scripts,
     a.binaries,
+    a.zipfiles,
     a.datas,
     [],
-    name='main',
+    name="aimbot",
     debug=False,
-    bootloader_ignore_signals=False,
     strip=False,
-    upx=True,
-    upx_exclude=[],
-    runtime_tmpdir=None,
+    upx=False,
     console=True,
-    disable_windowed_traceback=False,
-    argv_emulation=False,
-    target_arch=None,
-    codesign_identity=None,
-    entitlements_file=None,
 )

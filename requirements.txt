@@ -1,39 +1,95 @@
-# pip install -r requirements.txt
-
-# Base ----------------------------------------
-matplotlib>=3.2.2
-numpy>=1.18.5
-opencv-python>=4.1.1
-Pillow>=7.1.2
-PyYAML>=5.3.1
-requests>=2.23.0
-scipy>=1.4.1  # Google Colab version
-torch>=1.7.0
-torchvision>=0.8.1
-tqdm>=4.41.0
-
-# Logging -------------------------------------
-tensorboard>=2.4.1
-# wandb
-
-# Plotting ------------------------------------
-pandas>=1.1.4
-seaborn>=0.11.0
-
-# Export --------------------------------------
-# coremltools>=4.1  # CoreML export
-# onnx>=1.9.0  # ONNX export
-# onnx-simplifier>=0.3.6  # ONNX simplifier
-# scikit-learn==0.19.2  # CoreML quantization
-# tensorflow>=2.4.1  # TFLite export
-# tensorflowjs>=3.9.0  # TF.js export
-# openvino-dev  # OpenVINO export
-
-# Extras --------------------------------------
-# albumentations>=1.0.3
-# Cython  # for pycocotools https://github.com/cocodataset/cocoapi/issues/172
-# pycocotools>=2.0  # COCO mAP
-# roboflow
-thop~=0.0.31-2005241907
-
-
+absl-py==2.2.0
+altgraph==0.17.4
+bettercam==1.0.0
+certifi==2025.1.31
+charset-normalizer==3.4.1
+colorama==0.4.6
+coloredlogs==15.0.1
+comtypes==1.1.14
+configparser==7.2.0
+contourpy==1.3.0
+cuda-bindings==12.8.0
+cuda-python==12.8.0
+cupy-cuda11x==13.6.0
+cycler==0.12.1
+#D3DShot @ git+https://github.com/ra1nty/d3dshot.git@b998741a5cd37bf5866da0e69eb053744cdddd07
+dxcam==0.0.5
+exceptiongroup==1.2.2
+fastrlock==0.8.3
+filelock==3.18.0
+flatbuffers==25.9.23
+fonttools==4.56.0
+fsspec==2025.3.0
+grpcio==1.71.0
+humanfriendly==10.0
+idna==3.10
+importlib_metadata==8.6.1
+importlib_resources==6.5.2
+iniconfig==2.1.0
+Jinja2==3.1.6
+kiwisolver==1.4.7
+labelImg==1.8.6
+lxml==5.3.1
+Markdown==3.7
+MarkupSafe==3.0.2
+matplotlib==3.9.4
+ml_dtypes==0.5.4
+mpmath==1.3.0
+mss==10.0.0
+networkx==3.2.1
+numpy==2.0.2
+nvidia-ml-py==13.590.44
+onnx==1.19.1
+onnxruntime==1.19.2
+onnxslim==0.1.80
+opencv-python==4.11.0.86
+packaging==24.2
+pandas==2.2.3
+pefile==2023.2.7
+pillow==11.1.0
+pluggy==1.5.0
+polars==1.36.1
+polars-runtime-32==1.36.1
+protobuf==6.30.1
+psutil==7.1.3
+pydeps==3.0.1
+pyftpdlib==2.1.0
+pyinstaller==6.12.0
+pyinstaller-hooks-contrib==2025.1
+pynput==1.8.1
+pyparsing==3.2.2
+PyQt5==5.15.11
+PyQt5-Qt5==5.15.2
+PyQt5_sip==12.17.0
+pyreadline3==3.5.4
+pyserial==3.5
+pytesseract==0.3.13
+pytest==8.3.5
+python-dateutil==2.9.0.post0
+pytz==2025.1
+pywin32==310
+pywin32-ctypes==0.2.3
+PyYAML==6.0.2
+requests==2.32.3
+scipy==1.13.1
+screeninfo==0.8.1
+seaborn==0.13.2
+six==1.17.0
+stdlib-list==0.11.1
+sympy==1.14.0
+tensorboard==2.19.0
+tensorboard-data-server==0.7.2
+#tensorrt @ file:///F:/0325yolov11n/TensorRT-%E5%8A%A0%E9%80%9F/TensorRT-For-YOLO-Series-cuda-python/TensorRT-8.5.1.7/python/tensorrt-8.5.1.7-cp39-none-win_amd64.whl#sha256=394370ebba8a9f2289f8f6b615b4313feb55d00cf1984f2254c4c5978ddcd021
+tomli==2.2.1
+#torch==2.7.1+cu118
+#torchaudio==2.7.1+cu118
+#torchvision==0.22.1+cu118
+tqdm==4.67.1
+typing_extensions==4.12.2
+tzdata==2025.2
+ultralytics==8.3.240
+ultralytics-thop==2.0.18
+urllib3==2.3.0
+vgamepad==0.1.0
+Werkzeug==3.1.3
+zipp==3.21.0

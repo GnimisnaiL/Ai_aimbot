@@ -6,8 +6,6 @@ import matplotlib.pyplot as plt
 
 from utils import common 
 
-import cupy as cp
-
 import time
 class BaseEngine(object):
     def __init__(self, engine_path):
@@ -318,19 +316,21 @@ def letterbox(im,
     return im, r, (dw, dh)
 
 def letterbox_fast426(im):
-    # 1. resize (426->320)
-    im = cv2.resize(im, (320, 320), interpolation=cv2.INTER_LINEAR)
-    #im = cv2.resize(im, (320, 320), interpolation=cv2.INTER_NEAREST)
-    # 2. BGR -> RGB
+    # 1. 极速缩放：使用 INTER_NEAREST 替代 INTER_LINEAR (快 2-3 倍)
+    # 因为 426 缩到 320 损失不大，最近邻采样完全够用
+    im = cv2.resize(im, (320, 320), interpolation=cv2.INTER_NEAREST)
+
+    # 2. BGR -> RGB (必须做，但在 GPU 做更快，这里先保留 CPU 版)
     im = cv2.cvtColor(im, cv2.COLOR_BGR2RGB)
 
-    # 3. HWC -> CHW
+    # 3. HWC -> CHW (Transpose)
     im = im.transpose(2, 0, 1)
 
-    # 4. float32 + normalize
-    im = im.astype(np.float32) / 255.0
+    # 4. 归一化：由于数据是连续的，直接除以 255.0
+    # 使用 float32 保证 TensorRT 喜欢
+    im = np.ascontiguousarray(im, dtype=np.float32) / 255.0
 
-    return im, 320/426, (0, 0)
+    return im, 0.75117, (0, 0) # r 和 dwdh 直接返回常数
 
 def rainbow_fill(size=50):  # simpler way to generate rainbow color
     cmap = plt.get_cmap('jet')

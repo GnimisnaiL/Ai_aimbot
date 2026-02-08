@@ -103,28 +103,29 @@ class Capture(threading.Thread):
             return img if ret_val else None
 
         if cfg.mss_capture and self.sct:
-            if False:
-                with mss.mss() as sct:
-                    #计算每秒截图次数
-                    if False:
-                        self.frame_count+=1
-                        now=time.time()
-                        if now-self.last_frame_time>=1:
-                            print(self.frame_count)
-                            self.frame_count=0
-                            self.last_frame_time=now
-                    screenshot = sct.grab(self.monitor)
-                    raw = screenshot.bgra
-                    img = np.frombuffer(raw, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
-                    return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
+            # if True:
+            #     with mss.mss() as sct:
+            #         #计算每秒截图次数
+            #         if False:
+            #             self.frame_count+=1
+            #             now=time.time()
+            #             if now-self.last_frame_time>=1:
+            #                 print(self.frame_count)
+            #                 self.frame_count=0
+            #                 self.last_frame_time=now
+            #         screenshot = sct.grab(self.monitor)
+            #         raw = screenshot.bgra
+            #         img = np.frombuffer(raw, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
+            #         return cv2.cvtColor(img, cv2.COLOR_BGRA2BGR)
 
             # 2. 直接使用初始化好的 self.sct，不再使用 with 语句
             screenshot = self.sct.grab(self.monitor)
-        
             # 3. 极速转换：从 BGRA 到 BGR
             # 注意：mss 返回的 bgra 是字节流，reshape 后的切片速度远快于 cv2.cvtColor
-            img = np.frombuffer(screenshot.bgra, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4))
-            return img[:, :, :3].copy()  # 直接切掉第四个通道 (Alpha)，速度极快
+            img = np.frombuffer(screenshot.bgra, dtype=np.uint8).reshape((screenshot.height, screenshot.width, 4)) 
+            #return img[:, :, :3].copy()  # 直接切掉第四个通道 (Alpha)，速度极快
+
+            return img
             
     def get_new_frame(self):
         try:
